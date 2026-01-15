@@ -243,9 +243,7 @@ class ZaraPipeline:
         if self.save_local:
             console.print("[cyan]Saving to local files...[/cyan]")
             saved_paths = await self.loader.save_all_products(products, image_urls_map)
-            console.print(
-                f"[green]✓ Saved {len(saved_paths)} products locally[/green]"
-            )
+            console.print(f"[green]✓ Saved {len(saved_paths)} products locally[/green]")
         else:
             # Return placeholder paths for products saved to Supabase
             saved_paths = [Path(f"supabase://{p.product_id}") for p in products]

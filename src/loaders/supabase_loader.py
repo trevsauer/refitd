@@ -57,22 +57,19 @@ class SupabaseLoader:
         self._ensure_bucket_exists()
 
     def _ensure_bucket_exists(self) -> None:
-        """Create the storage bucket if it doesn't exist."""
+        """Check if the storage bucket exists (creation requires service_role key)."""
         try:
-            buckets = self.client.storage.list_buckets()
-            bucket_names = [b.name for b in buckets]
-
-            if self.bucket_name not in bucket_names:
-                self.client.storage.create_bucket(
-                    self.bucket_name,
-                    options={"public": True},
-                )
-                console.print(
-                    f"[green]Created storage bucket: {self.bucket_name}[/green]"
-                )
-        except Exception as e:
+            # Try to list files in the bucket to verify it exists
+            # Note: Creating buckets requires service_role key, not anon key
+            self.client.storage.from_(self.bucket_name).list(limit=1)
             console.print(
-                f"[yellow]Warning: Could not check/create bucket: {e}[/yellow]"
+                f"[dim]✓ Storage bucket '{self.bucket_name}' accessible[/dim]"
+            )
+        except Exception as e:
+            # Bucket might not exist or we don't have permissions
+            console.print(
+                f"[yellow]Warning: Could not access bucket '{self.bucket_name}'. "
+                f"Make sure it exists in Supabase Storage.[/yellow]"
             )
 
     async def save_product(
