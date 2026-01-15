@@ -98,24 +98,45 @@ python main.py --output /path/to/output
 ### Product Metadata (metadata.json)
 ```json
 {
-  "product_id": "12345678",
-  "name": "Relaxed Fit Jogger",
+  "product_id": "02621421",
+  "name": "Pearl Knit T-Shirt",
   "brand": "Zara",
-  "category": "Bottoms",
-  "subcategory": "Pants",
-  "url": "https://www.zara.com/us/en/...",
+  "category": "Tops",
+  "subcategory": "T-Shirts",
+  "url": "https://www.zara.com/us/en/pearl-knit-t-shirt-p02621421.html",
   "price": {
-    "current": 49.90,
-    "original": 69.90,
+    "current": 49.9,
+    "original": null,
     "currency": "USD",
-    "discount_percentage": 28.6
+    "discount_percentage": null
   },
-  "description": "Relaxed fit joggers with elastic...",
-  "colors": ["Black", "Navy"],
+  "description": "Regular fit T-shirt made from cotton knit fabric. Round neck and short sleeves. Ribbed finishes.",
+  "colors": ["Oyster-white | 2621/421/251"],
   "sizes": ["S", "M", "L", "XL"],
-  "materials": ["98% Cotton", "2% Elastane"],
-  "images": ["image_01.jpg", "image_02.jpg"],
-  "scraped_at": "2026-01-14T18:25:00Z"
+  "materials": ["100% Cotton"],
+  "images": ["image_01.jpg", "image_02.jpg", "image_03.jpg", "image_04.jpg", "image_05.jpg"],
+  "fit": "regular",
+  "weight": null,
+  "style_tags": [
+    {
+      "tag": "casual",
+      "reasoning": "Category 'tshirts' is typically this style"
+    },
+    {
+      "tag": "minimal",
+      "reasoning": "Color 'white' suggests this style"
+    },
+    {
+      "tag": "textured",
+      "reasoning": "Name contains 'knit'"
+    }
+  ],
+  "formality": {
+    "score": 2,
+    "label": "Casual",
+    "reasoning": ["Base: t-shirt (2/5)"]
+  },
+  "scraped_at": "2026-01-15T19:37:32.612876Z"
 }
 ```
 
