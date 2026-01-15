@@ -82,6 +82,20 @@ class StorageConfig:
 
 
 @dataclass
+class TrackingConfig:
+    """Configuration for product tracking to avoid re-scraping."""
+
+    enabled: bool = True
+    db_path: Path = field(
+        default_factory=lambda: Path(__file__).parent.parent / "data" / "tracking.db"
+    )
+
+    def ensure_dirs(self) -> None:
+        """Create tracking directory if it doesn't exist."""
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass
 class LoggingConfig:
     """Configuration for logging."""
 
@@ -102,11 +116,13 @@ class PipelineConfig:
     scraper: ScraperConfig = field(default_factory=ScraperConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
 
     def __post_init__(self):
         """Ensure all necessary directories exist."""
         self.storage.ensure_dirs()
         self.logging.ensure_dirs()
+        self.tracking.ensure_dirs()
 
 
 # Default configuration instance

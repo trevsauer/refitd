@@ -63,6 +63,25 @@ def parse_args():
         "--no-images", action="store_true", help="Skip downloading images"
     )
 
+    parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Force re-scrape all products, ignoring tracking database",
+    )
+
+    parser.add_argument(
+        "--clear-tracking",
+        action="store_true",
+        help="Clear the tracking database before running",
+    )
+
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show tracking statistics and exit",
+    )
+
     return parser.parse_args()
 
 
@@ -98,15 +117,33 @@ def create_config(args) -> PipelineConfig:
     )
 
 
-async def run_pipeline(config: PipelineConfig) -> dict:
+async def run_pipeline(config: PipelineConfig, force_rescrape: bool = False) -> dict:
     """Run the ETL pipeline with given config."""
-    pipeline = ZaraPipeline(config)
+    pipeline = ZaraPipeline(config, force_rescrape=force_rescrape)
     return await pipeline.run()
 
 
 def main():
     """Main entry point."""
     args = parse_args()
+
+    # Import tracker for stats and clear operations
+    from src.tracking import ProductTracker
+
+    tracker = ProductTracker()
+
+    # Handle --stats flag: show tracking stats and exit
+    if args.stats:
+        console.print("\n[bold cyan]Tracking Database Statistics[/bold cyan]")
+        tracker.print_stats()
+        return 0
+
+    # Handle --clear-tracking flag: clear database before running
+    if args.clear_tracking:
+        deleted = tracker.clear()
+        console.print(
+            f"[yellow]Cleared {deleted} records from tracking database[/yellow]"
+        )
 
     console.print(
         "\n[bold cyan]═══════════════════════════════════════════[/bold cyan]"
@@ -120,11 +157,12 @@ def main():
     console.print(f"[dim]Categories:[/dim] {', '.join(args.categories)}")
     console.print(f"[dim]Headless mode:[/dim] {args.headless}")
     console.print(f"[dim]Download images:[/dim] {not args.no_images}")
+    console.print(f"[dim]Force re-scrape:[/dim] {args.force}")
 
     config = create_config(args)
 
     try:
-        result = asyncio.run(run_pipeline(config))
+        result = asyncio.run(run_pipeline(config, force_rescrape=args.force))
 
         if result["success"]:
             console.print(

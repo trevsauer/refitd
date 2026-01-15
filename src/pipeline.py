@@ -16,6 +16,7 @@ sys.path.insert(0, str(__file__).rsplit("/", 2)[0])
 from config.settings import config, PipelineConfig
 from src.extractors.zara_extractor import RawProductData, ZaraExtractor
 from src.loaders.file_loader import FileLoader
+from src.tracking import ProductTracker
 from src.transformers.product_transformer import ProductMetadata, ProductTransformer
 
 console = Console()
@@ -31,15 +32,26 @@ class ZaraPipeline:
     - Load: Save to organized directory structure
     """
 
-    def __init__(self, pipeline_config: Optional[PipelineConfig] = None):
+    def __init__(
+        self,
+        pipeline_config: Optional[PipelineConfig] = None,
+        force_rescrape: bool = False,
+    ):
         self.config = pipeline_config or config
         self.extractor = None
         self.transformer = ProductTransformer()
         self.loader = FileLoader(self.config.storage)
+        self.force_rescrape = force_rescrape
+
+        # Initialize tracker if enabled
+        self.tracker: Optional[ProductTracker] = None
+        if self.config.tracking.enabled:
+            self.tracker = ProductTracker(self.config.tracking.db_path)
 
         # Store raw data for image URL mapping
         self.raw_products: list[RawProductData] = []
         self.transformed_products: list[ProductMetadata] = []
+        self.skipped_count: int = 0
 
     async def run(self) -> dict:
         """
@@ -97,13 +109,62 @@ class ZaraPipeline:
             return {"success": False, "error": str(e)}
 
     async def _extract(self) -> list[RawProductData]:
-        """Extract phase: scrape products from Zara."""
+        """Extract phase: scrape products from Zara, skipping already-scraped ones."""
         products = []
 
-        async with ZaraExtractor(self.config.scraper) as extractor:
-            products = await extractor.extract_all_products()
+        # Get already-scraped product IDs if tracking is enabled
+        scraped_ids: set[str] = set()
+        if self.tracker and not self.force_rescrape:
+            scraped_ids = self.tracker.get_scraped_ids()
+            if scraped_ids:
+                console.print(
+                    f"[dim]Tracking: {len(scraped_ids)} products already scraped[/dim]"
+                )
+                self.tracker.print_stats()
 
-        console.print(f"[green]Extracted {len(products)} products[/green]")
+        async with ZaraExtractor(self.config.scraper) as extractor:
+            for category_key in self.config.scraper.categories.keys():
+                console.print(
+                    f"\n[bold magenta]Processing category: {category_key}[/bold magenta]"
+                )
+
+                # Get product URLs
+                product_urls = await extractor.get_category_product_urls(category_key)
+
+                # Extract each product, skipping already-scraped ones
+                for url in product_urls:
+                    # Extract product ID from URL to check if already scraped
+                    product_id = extractor._extract_product_id(url)
+
+                    if product_id in scraped_ids:
+                        console.print(
+                            f"[dim]⏭️  Skipping already scraped: {product_id}[/dim]"
+                        )
+                        self.skipped_count += 1
+                        continue
+
+                    await extractor._random_delay()
+                    product = await extractor.extract_product(url, category_key)
+
+                    if product:
+                        products.append(product)
+
+                        # Mark as scraped in the tracking database
+                        if self.tracker:
+                            self.tracker.mark_scraped(
+                                product_id=product.product_id,
+                                url=product.url,
+                                category=product.category,
+                                name=product.name,
+                                price=product.price_current,
+                            )
+
+        if self.skipped_count > 0:
+            console.print(
+                f"[yellow]Skipped {self.skipped_count} previously scraped products[/yellow]"
+            )
+
+        console.print(f"[green]Extracted {len(products)} new products[/green]")
         return products
 
     def _transform(self, raw_products: list[RawProductData]) -> list[ProductMetadata]:
