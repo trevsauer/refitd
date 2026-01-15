@@ -2,21 +2,148 @@
 """
 Simple web viewer for browsing scraped product data.
 
+Supports two data sources:
+  - Local files (default): Reads from data/zara/mens directory
+  - Supabase database: Reads from cloud database (use --supabase flag)
+
 Usage:
-    python viewer.py
+    python viewer.py              # Load from local files
+    python viewer.py --supabase   # Load from Supabase database
 
 Then open http://localhost:5000 in your browser.
 """
+import argparse
 import json
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template_string, send_from_directory
+
+# Load environment variables
+load_dotenv(Path(__file__).parent / ".env")
 
 app = Flask(__name__)
 
-# Data directory
+# Data directory for local files
 DATA_DIR = Path(__file__).parent / "data" / "zara" / "mens"
+
+# Global flag for data source
+USE_SUPABASE = False
+supabase_client = None
+BUCKET_NAME = "product-images"
+
+
+def init_supabase():
+    """Initialize Supabase client."""
+    global supabase_client
+    
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+    
+    if not supabase_url or not supabase_key:
+        raise ValueError(
+            "Supabase credentials not found. "
+            "Set SUPABASE_URL and SUPABASE_KEY in .env file."
+        )
+    
+    from supabase import create_client
+    supabase_client = create_client(supabase_url, supabase_key)
+    return supabase_client
+
+
+def get_products_from_supabase():
+    """Fetch all products from Supabase database."""
+    if not supabase_client:
+        return []
+    
+    try:
+        result = supabase_client.table("products").select("*").execute()
+        products = result.data or []
+        
+        # Transform database format to match local file format for frontend compatibility
+        transformed = []
+        for p in products:
+            # Build image URLs from storage paths
+            image_paths = p.get("image_paths", [])
+            supabase_url = os.getenv("SUPABASE_URL")
+            
+            transformed.append({
+                "product_id": p.get("product_id"),
+                "name": p.get("name"),
+                "brand": "Zara",
+                "category": p.get("category"),
+                "subcategory": p.get("category"),  # Use category as subcategory
+                "url": p.get("url"),
+                "price": {
+                    "current": float(p.get("price_current")) if p.get("price_current") else None,
+                    "original": float(p.get("price_original")) if p.get("price_original") else None,
+                    "currency": p.get("currency", "USD"),
+                    "discount_percentage": None,
+                },
+                "description": p.get("description"),
+                "colors": p.get("colors", []),
+                "sizes": p.get("sizes", []),
+                "materials": p.get("materials", []),
+                "images": image_paths,  # Store full paths for Supabase
+                "image_urls": [
+                    f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{path}"
+                    for path in image_paths
+                ],
+                "fit": p.get("fit"),
+                "weight": None,
+                "style_tags": [],
+                "formality": None,
+                "scraped_at": p.get("scraped_at"),
+                "_source": "supabase",  # Mark source for frontend
+            })
+        
+        # Sort by product_id
+        transformed.sort(key=lambda x: x.get("product_id", ""))
+        return transformed
+        
+    except Exception as e:
+        print(f"Error fetching from Supabase: {e}")
+        return []
+
+
+def get_products_from_local():
+    """Scan data directory and load all product metadata from local files."""
+    products = []
+
+    if not DATA_DIR.exists():
+        return products
+
+    # Scan category directories
+    for category_dir in DATA_DIR.iterdir():
+        if category_dir.is_dir() and category_dir.name != "__pycache__":
+            # Scan product directories within category
+            for product_dir in category_dir.iterdir():
+                if product_dir.is_dir():
+                    metadata_file = product_dir / "metadata.json"
+                    if metadata_file.exists():
+                        try:
+                            with open(metadata_file, "r") as f:
+                                metadata = json.load(f)
+                                # Add category folder name for image paths
+                                metadata["category"] = category_dir.name
+                                metadata["_source"] = "local"
+                                products.append(metadata)
+                        except json.JSONDecodeError:
+                            print(f"Error reading {metadata_file}")
+
+    # Sort by product_id for consistent ordering
+    products.sort(key=lambda x: x.get("product_id", ""))
+    return products
+
+
+def get_all_products():
+    """Get products from configured source (Supabase or local)."""
+    if USE_SUPABASE:
+        return get_products_from_supabase()
+    else:
+        return get_products_from_local()
+
 
 # HTML Template with embedded CSS and JavaScript
 HTML_TEMPLATE = """
@@ -50,6 +177,15 @@ HTML_TEMPLATE = """
             font-size: 24px;
             font-weight: 300;
             letter-spacing: 2px;
+        }
+        
+        .data-source {
+            font-size: 12px;
+            margin-top: 5px;
+            padding: 4px 12px;
+            background: {{ '#4CAF50' if use_supabase else '#2196F3' }};
+            display: inline-block;
+            border-radius: 12px;
         }
 
         .container {
@@ -292,6 +428,7 @@ HTML_TEMPLATE = """
 <body>
     <header>
         <h1>ZARA PRODUCT VIEWER</h1>
+        <span class="data-source">{{ '🗄️ Supabase Database' if use_supabase else '📁 Local Files' }}</span>
     </header>
 
     <div class="container">
@@ -312,6 +449,7 @@ HTML_TEMPLATE = """
         let products = [];
         let currentIndex = 0;
         let currentImageIndex = 0;
+        const useSupabase = {{ 'true' if use_supabase else 'false' }};
 
         async function loadProducts() {
             try {
@@ -324,7 +462,7 @@ HTML_TEMPLATE = """
                     document.getElementById('productCard').innerHTML = `
                         <div class="no-data">
                             <h2>No products found</h2>
-                            <p>Run the scraper first: <code>python main.py</code></p>
+                            <p>${useSupabase ? 'No products in Supabase database. Run: <code>python main.py --supabase</code>' : 'Run the scraper first: <code>python main.py</code>'}</p>
                         </div>
                     `;
                     document.getElementById('counter').textContent = 'No products';
@@ -338,6 +476,19 @@ HTML_TEMPLATE = """
                     </div>
                 `;
             }
+        }
+
+        function getImageUrl(product, index) {
+            // For Supabase, use the full image URLs
+            if (product._source === 'supabase' && product.image_urls && product.image_urls[index]) {
+                return product.image_urls[index];
+            }
+            // For local files, construct the path
+            const images = product.images || [];
+            if (images[index]) {
+                return `/images/${product.category}/${product.product_id}/${images[index]}`;
+            }
+            return 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500" fill="%23ccc"><rect width="100%" height="100%"/><text x="50%" y="50%" text-anchor="middle" fill="%23999">No Image</text></svg>';
         }
 
         function displayProduct(index) {
@@ -356,16 +507,19 @@ HTML_TEMPLATE = """
 
             // Build image gallery
             const images = product.images || [];
-            const mainImageSrc = images.length > 0
-                ? `/images/${product.category}/${product.product_id}/${images[0]}`
-                : 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500" fill="%23ccc"><rect width="100%" height="100%"/><text x="50%" y="50%" text-anchor="middle" fill="%23999">No Image</text></svg>';
+            const imageCount = product._source === 'supabase' ? (product.image_urls || []).length : images.length;
+            const mainImageSrc = getImageUrl(product, 0);
 
-            const thumbnails = images.map((img, i) => `
-                <img src="/images/${product.category}/${product.product_id}/${img}"
-                     class="thumbnail ${i === 0 ? 'active' : ''}"
-                     onclick="changeImage(${i}, '${product.category}', '${product.product_id}', '${img}')"
-                     alt="Thumbnail ${i + 1}">
-            `).join('');
+            let thumbnails = '';
+            for (let i = 0; i < imageCount; i++) {
+                const imgSrc = getImageUrl(product, i);
+                thumbnails += `
+                    <img src="${imgSrc}"
+                         class="thumbnail ${i === 0 ? 'active' : ''}"
+                         onclick="changeImage(${i})"
+                         alt="Thumbnail ${i + 1}">
+                `;
+            }
 
             // Build price display
             let priceHtml = '';
@@ -522,9 +676,10 @@ HTML_TEMPLATE = """
             `;
         }
 
-        function changeImage(index, category, productId, filename) {
+        function changeImage(index) {
             currentImageIndex = index;
-            document.getElementById('mainImage').src = `/images/${category}/${productId}/${filename}`;
+            const product = products[currentIndex];
+            document.getElementById('mainImage').src = getImageUrl(product, index);
 
             // Update active thumbnail
             document.querySelectorAll('.thumbnail').forEach((thumb, i) => {
@@ -565,39 +720,10 @@ HTML_TEMPLATE = """
 """
 
 
-def get_all_products():
-    """Scan data directory and load all product metadata."""
-    products = []
-
-    if not DATA_DIR.exists():
-        return products
-
-    # Scan category directories
-    for category_dir in DATA_DIR.iterdir():
-        if category_dir.is_dir() and category_dir.name != "__pycache__":
-            # Scan product directories within category
-            for product_dir in category_dir.iterdir():
-                if product_dir.is_dir():
-                    metadata_file = product_dir / "metadata.json"
-                    if metadata_file.exists():
-                        try:
-                            with open(metadata_file, "r") as f:
-                                metadata = json.load(f)
-                                # Add category folder name for image paths
-                                metadata["category"] = category_dir.name
-                                products.append(metadata)
-                        except json.JSONDecodeError:
-                            print(f"Error reading {metadata_file}")
-
-    # Sort by product_id for consistent ordering
-    products.sort(key=lambda x: x.get("product_id", ""))
-    return products
-
-
 @app.route("/")
 def index():
     """Serve the main viewer page."""
-    return render_template_string(HTML_TEMPLATE)
+    return render_template_string(HTML_TEMPLATE, use_supabase=USE_SUPABASE)
 
 
 @app.route("/api/products")
@@ -609,27 +735,64 @@ def api_products():
 
 @app.route("/images/<category>/<product_id>/<filename>")
 def serve_image(category, product_id, filename):
-    """Serve product images."""
+    """Serve product images from local files."""
     image_dir = DATA_DIR / category / product_id
     return send_from_directory(image_dir, filename)
 
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Zara Product Viewer - Browse scraped products"
+    )
+    parser.add_argument(
+        "--supabase",
+        action="store_true",
+        help="Load products from Supabase database instead of local files",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=5000,
+        help="Port to run the server on (default: 5000)",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = parse_args()
+    USE_SUPABASE = args.supabase
+    
     print("\n" + "=" * 50)
     print("  ZARA PRODUCT VIEWER")
     print("=" * 50)
-    print(f"\nData directory: {DATA_DIR}")
+    
+    if USE_SUPABASE:
+        print("\n📦 Data source: Supabase Database")
+        try:
+            init_supabase()
+            print("✓ Connected to Supabase")
+        except Exception as e:
+            print(f"✗ Failed to connect to Supabase: {e}")
+            print("\nFalling back to local files...")
+            USE_SUPABASE = False
+    
+    if not USE_SUPABASE:
+        print(f"\n📁 Data source: Local files")
+        print(f"   Directory: {DATA_DIR}")
 
     products = get_all_products()
-    print(f"Products found: {len(products)}")
+    print(f"\n📊 Products found: {len(products)}")
 
     if products:
         print("\nProducts loaded:")
-        for p in products:
+        for p in products[:10]:  # Show first 10
             print(f"  • {p.get('name', 'Unknown')} ({p.get('product_id', 'N/A')})")
+        if len(products) > 10:
+            print(f"  ... and {len(products) - 10} more")
 
     print("\n" + "-" * 50)
-    print("  Open http://localhost:5000 in your browser")
+    print(f"  Open http://localhost:{args.port} in your browser")
     print("-" * 50 + "\n")
 
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=args.port)
