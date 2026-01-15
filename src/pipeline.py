@@ -213,7 +213,7 @@ class ZaraPipeline:
             for product, raw in zip(products, raw_products):
                 try:
                     await self.supabase_loader.save_product(
-                        product_id=product.id,
+                        product_id=product.product_id,
                         name=product.name,
                         category=product.category,
                         url=raw.url,

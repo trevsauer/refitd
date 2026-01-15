@@ -7,11 +7,16 @@ Stores product metadata in PostgreSQL and images in Supabase Storage.
 import asyncio
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import httpx
+from dotenv import load_dotenv
 from rich.console import Console
 from supabase import Client, create_client
+
+# Load .env file from project root
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 console = Console()
 
