@@ -7,6 +7,8 @@ A web scraping ETL (Extract, Transform, Load) pipeline for scraping men's clothi
 - **Extract**: Scrapes product data using Playwright with stealth settings to handle JavaScript rendering
 - **Transform**: Cleans and validates product data using Pydantic models
 - **Load**: Saves products to organized directory structure with images and metadata
+- **Database Storage**: Optional Supabase integration for cloud storage of products and images
+- **Tracking**: SQLite-based tracking to avoid re-scraping the same products
 
 ## Directory Structure
 
@@ -156,8 +158,150 @@ This pipeline is designed to be respectful:
 
 ## Future Enhancements
 
-- [ ] Add database storage (SQLite/PostgreSQL)
+- [x] Add database storage (Supabase PostgreSQL)
+- [x] Add product tracking to avoid re-scraping
 - [ ] Add women's clothing support
 - [ ] Add scheduling/cron support
 - [ ] Add proxy rotation for scale
 - [ ] Add more clothing retailers
+
+---
+
+## Database Storage (Supabase)
+
+The pipeline supports optional cloud storage using [Supabase](https://supabase.com) (free tier available):
+
+- **Product metadata** → PostgreSQL database
+- **Product images** → Supabase Storage (S3-compatible)
+
+### Setting Up Supabase
+
+1. **Create a free Supabase account** at https://supabase.com
+
+2. **Create a new project** and note your:
+   - Project URL: `https://your-project-id.supabase.co`
+   - API Key: Found in Project Settings → API → `anon public` key (starts with `eyJ...`)
+
+3. **Create the database table** - Go to SQL Editor and run:
+
+```sql
+CREATE TABLE IF NOT EXISTS products (
+    product_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    url TEXT NOT NULL,
+    price_current DECIMAL(10, 2),
+    price_original DECIMAL(10, 2),
+    currency TEXT DEFAULT 'USD',
+    description TEXT,
+    colors TEXT[] DEFAULT '{}',
+    sizes TEXT[] DEFAULT '{}',
+    materials TEXT[] DEFAULT '{}',
+    fit TEXT,
+    image_paths TEXT[] DEFAULT '{}',
+    image_count INTEGER DEFAULT 0,
+    scraped_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS with full access policy
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all access" ON products FOR ALL USING (true) WITH CHECK (true);
+```
+
+4. **Create a storage bucket**:
+   - Go to Storage → New bucket
+   - Name: `product-images`
+   - Check "Public bucket"
+   - Add a policy: New policy → Allow all operations → Policy definition: `true`
+
+5. **Configure environment variables**:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your credentials:
+```
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+### Using Supabase Storage
+
+```bash
+# Scrape and store in Supabase
+python main.py --supabase
+
+# Force re-scrape all products
+python main.py --supabase --force
+
+# Scrape specific categories
+python main.py --supabase --categories tshirts pants -n 5
+```
+
+### Viewing Your Data Online
+
+#### View Product Data (Database)
+1. Go to your Supabase dashboard: https://supabase.com/dashboard
+2. Select your project
+3. Click **Table Editor** in the left sidebar
+4. Click on the **products** table
+5. You'll see all scraped products with their metadata
+
+You can also run SQL queries directly:
+- Go to **SQL Editor**
+- Run queries like:
+```sql
+-- View all products
+SELECT * FROM products;
+
+-- View products by category
+SELECT name, price_current, category FROM products WHERE category = 'Tops';
+
+-- Get price statistics
+SELECT
+    category,
+    COUNT(*) as count,
+    AVG(price_current) as avg_price,
+    MIN(price_current) as min_price,
+    MAX(price_current) as max_price
+FROM products
+GROUP BY category;
+```
+
+#### View Product Images (Storage)
+1. Go to your Supabase dashboard
+2. Click **Storage** in the left sidebar
+3. Click on the **product-images** bucket
+4. Browse folders by category → product_id → images
+
+Each image has a public URL you can access directly:
+```
+https://your-project-id.supabase.co/storage/v1/object/public/product-images/Tops/12345678/image_0.jpg
+```
+
+### Product Tracking
+
+The pipeline uses a local SQLite database (`data/tracking.db`) to track which products have been scraped, avoiding duplicate work on subsequent runs.
+
+```bash
+# View tracking statistics
+python main.py --stats
+
+# Clear tracking database (to re-scrape everything)
+python main.py --clear-tracking
+
+# Force re-scrape ignoring tracking
+python main.py --force
+```
+
+### CLI Options for Database
+
+| Option | Description |
+|--------|-------------|
+| `--supabase` | Store data in Supabase |
+| `--force, -f` | Force re-scrape, ignore tracking |
+| `--clear-tracking` | Clear tracking database before running |
+| `--stats` | Show tracking statistics and exit |
