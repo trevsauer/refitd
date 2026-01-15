@@ -82,6 +82,12 @@ def parse_args():
         help="Show tracking statistics and exit",
     )
 
+    parser.add_argument(
+        "--supabase",
+        action="store_true",
+        help="Store data in Supabase (requires SUPABASE_URL and SUPABASE_KEY env vars)",
+    )
+
     return parser.parse_args()
 
 
@@ -117,9 +123,13 @@ def create_config(args) -> PipelineConfig:
     )
 
 
-async def run_pipeline(config: PipelineConfig, force_rescrape: bool = False) -> dict:
+async def run_pipeline(
+    config: PipelineConfig, force_rescrape: bool = False, use_supabase: bool = False
+) -> dict:
     """Run the ETL pipeline with given config."""
-    pipeline = ZaraPipeline(config, force_rescrape=force_rescrape)
+    pipeline = ZaraPipeline(
+        config, force_rescrape=force_rescrape, use_supabase=use_supabase
+    )
     return await pipeline.run()
 
 
@@ -158,11 +168,14 @@ def main():
     console.print(f"[dim]Headless mode:[/dim] {args.headless}")
     console.print(f"[dim]Download images:[/dim] {not args.no_images}")
     console.print(f"[dim]Force re-scrape:[/dim] {args.force}")
+    console.print(f"[dim]Use Supabase:[/dim] {args.supabase}")
 
     config = create_config(args)
 
     try:
-        result = asyncio.run(run_pipeline(config, force_rescrape=args.force))
+        result = asyncio.run(
+            run_pipeline(config, force_rescrape=args.force, use_supabase=args.supabase)
+        )
 
         if result["success"]:
             console.print(

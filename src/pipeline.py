@@ -21,6 +21,19 @@ from src.transformers.product_transformer import ProductMetadata, ProductTransfo
 
 console = Console()
 
+# Optional Supabase loader (only imported if needed)
+SupabaseLoader = None
+
+
+def _get_supabase_loader():
+    """Lazily import SupabaseLoader to avoid import errors when not using Supabase."""
+    global SupabaseLoader
+    if SupabaseLoader is None:
+        from src.loaders.supabase_loader import SupabaseLoader as _SupabaseLoader
+
+        SupabaseLoader = _SupabaseLoader
+    return SupabaseLoader
+
 
 class ZaraPipeline:
     """
@@ -36,12 +49,26 @@ class ZaraPipeline:
         self,
         pipeline_config: Optional[PipelineConfig] = None,
         force_rescrape: bool = False,
+        use_supabase: bool = False,
     ):
         self.config = pipeline_config or config
         self.extractor = None
         self.transformer = ProductTransformer()
         self.loader = FileLoader(self.config.storage)
         self.force_rescrape = force_rescrape
+        self.use_supabase = use_supabase
+        self.supabase_loader = None
+
+        # Initialize Supabase loader if requested
+        if use_supabase:
+            try:
+                LoaderClass = _get_supabase_loader()
+                self.supabase_loader = LoaderClass()
+                console.print("[green]✓ Supabase loader initialized[/green]")
+            except Exception as e:
+                console.print(f"[red]Failed to initialize Supabase: {e}[/red]")
+                console.print("[yellow]Falling back to file storage[/yellow]")
+                self.use_supabase = False
 
         # Initialize tracker if enabled
         self.tracker: Optional[ProductTracker] = None
@@ -176,10 +203,39 @@ class ZaraPipeline:
     async def _load(
         self, products: list[ProductMetadata], raw_products: list[RawProductData]
     ) -> list[Path]:
-        """Load phase: save products and images to disk."""
+        """Load phase: save products and images to storage."""
         # Create image URL mapping from raw data
         image_urls_map = {raw.product_id: raw.image_urls for raw in raw_products}
 
+        # Save to Supabase if enabled
+        if self.use_supabase and self.supabase_loader:
+            console.print("[cyan]Saving to Supabase...[/cyan]")
+            for product, raw in zip(products, raw_products):
+                try:
+                    await self.supabase_loader.save_product(
+                        product_id=product.id,
+                        name=product.name,
+                        category=product.category,
+                        url=raw.url,
+                        price_current=product.price.current,
+                        price_original=product.price.original,
+                        currency=product.price.currency,
+                        description=product.description,
+                        colors=product.colors,
+                        sizes=product.sizes,
+                        materials=product.materials,
+                        fit=product.fit,
+                        image_urls=raw.image_urls,
+                    )
+                except Exception as e:
+                    console.print(
+                        f"[red]Failed to save {product.name} to Supabase: {e}[/red]"
+                    )
+            console.print(
+                f"[green]✓ Saved {len(products)} products to Supabase[/green]"
+            )
+
+        # Also save to local files (as backup or if Supabase not enabled)
         saved_paths = await self.loader.save_all_products(products, image_urls_map)
         return saved_paths
 
