@@ -1,0 +1,23 @@
+# Web Scraping
+playwright==1.49.1
+playwright-stealth==1.0.6
+
+# HTTP & Async
+aiohttp==3.9.1
+aiofiles==23.2.1
+
+# Data Validation
+pydantic==2.5.3
+
+# CLI & Logging
+rich==13.7.0
+
+# Configuration
+python-dotenv==1.0.0
+
+# Utilities
+tenacity==8.2.3  # Retry logic
+setuptools>=65.0.0  # Required for pkg_resources in Python 3.12+
+
+# Web Viewer
+flask==3.0.0
