@@ -49,7 +49,8 @@ class ZaraPipeline:
         self,
         pipeline_config: Optional[PipelineConfig] = None,
         force_rescrape: bool = False,
-        use_supabase: bool = False,
+        use_supabase: bool = True,
+        save_local: bool = False,
     ):
         self.config = pipeline_config or config
         self.extractor = None
@@ -57,6 +58,7 @@ class ZaraPipeline:
         self.loader = FileLoader(self.config.storage)
         self.force_rescrape = force_rescrape
         self.use_supabase = use_supabase
+        self.save_local = save_local
         self.supabase_loader = None
 
         # Initialize Supabase loader if requested
@@ -69,6 +71,7 @@ class ZaraPipeline:
                 console.print(f"[red]Failed to initialize Supabase: {e}[/red]")
                 console.print("[yellow]Falling back to file storage[/yellow]")
                 self.use_supabase = False
+                self.save_local = True  # Fall back to local storage
 
         # Initialize tracker if enabled
         self.tracker: Optional[ProductTracker] = None
@@ -206,6 +209,7 @@ class ZaraPipeline:
         """Load phase: save products and images to storage."""
         # Create image URL mapping from raw data
         image_urls_map = {raw.product_id: raw.image_urls for raw in raw_products}
+        saved_paths = []
 
         # Save to Supabase if enabled
         if self.use_supabase and self.supabase_loader:
@@ -235,8 +239,17 @@ class ZaraPipeline:
                 f"[green]✓ Saved {len(products)} products to Supabase[/green]"
             )
 
-        # Also save to local files (as backup or if Supabase not enabled)
-        saved_paths = await self.loader.save_all_products(products, image_urls_map)
+        # Save to local files if enabled
+        if self.save_local:
+            console.print("[cyan]Saving to local files...[/cyan]")
+            saved_paths = await self.loader.save_all_products(products, image_urls_map)
+            console.print(
+                f"[green]✓ Saved {len(saved_paths)} products locally[/green]"
+            )
+        else:
+            # Return placeholder paths for products saved to Supabase
+            saved_paths = [Path(f"supabase://{p.product_id}") for p in products]
+
         return saved_paths
 
     def _print_header(self):

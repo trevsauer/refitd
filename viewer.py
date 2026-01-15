@@ -37,17 +37,18 @@ BUCKET_NAME = "product-images"
 def init_supabase():
     """Initialize Supabase client."""
     global supabase_client
-    
+
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_KEY")
-    
+
     if not supabase_url or not supabase_key:
         raise ValueError(
             "Supabase credentials not found. "
             "Set SUPABASE_URL and SUPABASE_KEY in .env file."
         )
-    
+
     from supabase import create_client
+
     supabase_client = create_client(supabase_url, supabase_key)
     return supabase_client
 
@@ -56,52 +57,62 @@ def get_products_from_supabase():
     """Fetch all products from Supabase database."""
     if not supabase_client:
         return []
-    
+
     try:
         result = supabase_client.table("products").select("*").execute()
         products = result.data or []
-        
+
         # Transform database format to match local file format for frontend compatibility
         transformed = []
         for p in products:
             # Build image URLs from storage paths
             image_paths = p.get("image_paths", [])
             supabase_url = os.getenv("SUPABASE_URL")
-            
-            transformed.append({
-                "product_id": p.get("product_id"),
-                "name": p.get("name"),
-                "brand": "Zara",
-                "category": p.get("category"),
-                "subcategory": p.get("category"),  # Use category as subcategory
-                "url": p.get("url"),
-                "price": {
-                    "current": float(p.get("price_current")) if p.get("price_current") else None,
-                    "original": float(p.get("price_original")) if p.get("price_original") else None,
-                    "currency": p.get("currency", "USD"),
-                    "discount_percentage": None,
-                },
-                "description": p.get("description"),
-                "colors": p.get("colors", []),
-                "sizes": p.get("sizes", []),
-                "materials": p.get("materials", []),
-                "images": image_paths,  # Store full paths for Supabase
-                "image_urls": [
-                    f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{path}"
-                    for path in image_paths
-                ],
-                "fit": p.get("fit"),
-                "weight": None,
-                "style_tags": [],
-                "formality": None,
-                "scraped_at": p.get("scraped_at"),
-                "_source": "supabase",  # Mark source for frontend
-            })
-        
+
+            transformed.append(
+                {
+                    "product_id": p.get("product_id"),
+                    "name": p.get("name"),
+                    "brand": "Zara",
+                    "category": p.get("category"),
+                    "subcategory": p.get("category"),  # Use category as subcategory
+                    "url": p.get("url"),
+                    "price": {
+                        "current": (
+                            float(p.get("price_current"))
+                            if p.get("price_current")
+                            else None
+                        ),
+                        "original": (
+                            float(p.get("price_original"))
+                            if p.get("price_original")
+                            else None
+                        ),
+                        "currency": p.get("currency", "USD"),
+                        "discount_percentage": None,
+                    },
+                    "description": p.get("description"),
+                    "colors": p.get("colors", []),
+                    "sizes": p.get("sizes", []),
+                    "materials": p.get("materials", []),
+                    "images": image_paths,  # Store full paths for Supabase
+                    "image_urls": [
+                        f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{path}"
+                        for path in image_paths
+                    ],
+                    "fit": p.get("fit"),
+                    "weight": None,
+                    "style_tags": [],
+                    "formality": None,
+                    "scraped_at": p.get("scraped_at"),
+                    "_source": "supabase",  # Mark source for frontend
+                }
+            )
+
         # Sort by product_id
         transformed.sort(key=lambda x: x.get("product_id", ""))
         return transformed
-        
+
     except Exception as e:
         print(f"Error fetching from Supabase: {e}")
         return []
@@ -178,7 +189,7 @@ HTML_TEMPLATE = """
             font-weight: 300;
             letter-spacing: 2px;
         }
-        
+
         .data-source {
             font-size: 12px;
             margin-top: 5px;
@@ -762,11 +773,11 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     USE_SUPABASE = args.supabase
-    
+
     print("\n" + "=" * 50)
     print("  ZARA PRODUCT VIEWER")
     print("=" * 50)
-    
+
     if USE_SUPABASE:
         print("\n📦 Data source: Supabase Database")
         try:
@@ -776,7 +787,7 @@ if __name__ == "__main__":
             print(f"✗ Failed to connect to Supabase: {e}")
             print("\nFalling back to local files...")
             USE_SUPABASE = False
-    
+
     if not USE_SUPABASE:
         print(f"\n📁 Data source: Local files")
         print(f"   Directory: {DATA_DIR}")

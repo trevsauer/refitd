@@ -83,9 +83,15 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--supabase",
+        "--no-supabase",
         action="store_true",
-        help="Store data in Supabase (requires SUPABASE_URL and SUPABASE_KEY env vars)",
+        help="Disable Supabase storage (local files only)",
+    )
+
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Also save to local files (in addition to Supabase)",
     )
 
     return parser.parse_args()
@@ -124,11 +130,17 @@ def create_config(args) -> PipelineConfig:
 
 
 async def run_pipeline(
-    config: PipelineConfig, force_rescrape: bool = False, use_supabase: bool = False
+    config: PipelineConfig,
+    force_rescrape: bool = False,
+    use_supabase: bool = True,
+    save_local: bool = False,
 ) -> dict:
     """Run the ETL pipeline with given config."""
     pipeline = ZaraPipeline(
-        config, force_rescrape=force_rescrape, use_supabase=use_supabase
+        config,
+        force_rescrape=force_rescrape,
+        use_supabase=use_supabase,
+        save_local=save_local,
     )
     return await pipeline.run()
 
@@ -168,13 +180,26 @@ def main():
     console.print(f"[dim]Headless mode:[/dim] {args.headless}")
     console.print(f"[dim]Download images:[/dim] {not args.no_images}")
     console.print(f"[dim]Force re-scrape:[/dim] {args.force}")
-    console.print(f"[dim]Use Supabase:[/dim] {args.supabase}")
+
+    # Supabase is enabled by default unless --no-supabase is passed
+    use_supabase = not args.no_supabase
+    save_local = (
+        args.local or args.no_supabase
+    )  # Save locally if --local or --no-supabase
+
+    console.print(f"[dim]Use Supabase:[/dim] {use_supabase}")
+    console.print(f"[dim]Save locally:[/dim] {save_local}")
 
     config = create_config(args)
 
     try:
         result = asyncio.run(
-            run_pipeline(config, force_rescrape=args.force, use_supabase=args.supabase)
+            run_pipeline(
+                config,
+                force_rescrape=args.force,
+                use_supabase=use_supabase,
+                save_local=save_local,
+            )
         )
 
         if result["success"]:
