@@ -158,11 +158,23 @@ class ZaraPipeline:
                     f"\n[bold magenta]Processing category: {category_key}[/bold magenta]"
                 )
 
-                # Get product URLs
-                product_urls = await extractor.get_category_product_urls(category_key)
+                # Get ALL product URLs from the category (pass a high limit to get more options)
+                # We'll iterate through them until we find enough NEW products
+                max_to_fetch = max(50, self.config.scraper.products_per_category * 3)
+                product_urls = await extractor.get_category_product_urls(
+                    category_key, limit=max_to_fetch
+                )
+
+                # Track how many NEW products we've scraped for this category
+                new_products_scraped = 0
+                target_new_products = self.config.scraper.products_per_category
 
                 # Extract each product, skipping already-scraped ones
                 for url in product_urls:
+                    # Check if we've reached the target number of NEW products
+                    if new_products_scraped >= target_new_products:
+                        break
+
                     # Extract product ID from URL to check if already scraped
                     product_id = extractor._extract_product_id(url)
 
@@ -178,6 +190,7 @@ class ZaraPipeline:
 
                     if product:
                         products.append(product)
+                        new_products_scraped += 1
 
                         # Mark as scraped in the tracking database
                         if self.tracker:
@@ -188,6 +201,10 @@ class ZaraPipeline:
                                 name=product.name,
                                 price=product.price_current,
                             )
+
+                console.print(
+                    f"[green]Category {category_key}: {new_products_scraped} new products scraped[/green]"
+                )
 
         if self.skipped_count > 0:
             console.print(

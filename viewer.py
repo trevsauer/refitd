@@ -15,6 +15,8 @@ Then open http://localhost:5000 in your browser.
 import argparse
 import json
 import os
+import subprocess
+import threading
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -32,6 +34,25 @@ DATA_DIR = Path(__file__).parent / "data" / "zara" / "mens"
 USE_SUPABASE = False
 supabase_client = None
 BUCKET_NAME = "product-images"
+
+# ============================================
+# SCRAPER STATUS TRACKING
+# ============================================
+scraper_status = {
+    "running": False,
+    "progress": 0,
+    "total": 0,
+    "current_category": "",
+    "current_product": "",
+    "products_scraped": 0,
+    "products_skipped": 0,
+    "error": None,
+    "completed": False,
+    "start_time": None,
+    "end_time": None,
+    "logs": [],  # Store log lines for display
+    "refresh_handled": False,  # Prevent multiple refreshes
+}
 
 
 def init_supabase():
@@ -707,6 +728,173 @@ HTML_TEMPLATE = """
             color: #e65100;
         }
 
+        /* Scraper Section Styles */
+        .scraper-section {
+            background: #fff;
+            border-radius: 8px;
+            padding: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .scraper-section h3 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .scraper-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .scraper-controls label {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .scraper-controls select,
+        .scraper-controls input {
+            padding: 8px 12px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .go-btn {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: #fff;
+            border: none;
+            padding: 15px 50px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        }
+
+        .go-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+        }
+
+        .go-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .progress-container.visible {
+            display: block;
+        }
+
+        .progress-bar-wrapper {
+            background: #e0e0e0;
+            border-radius: 10px;
+            height: 20px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            border-radius: 10px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+
+        .progress-text {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .progress-status {
+            font-size: 16px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .progress-details {
+            font-size: 13px;
+            color: #888;
+        }
+
+        /* Log Viewer Styles */
+        .log-viewer {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            text-align: left;
+            display: none;
+        }
+
+        .log-viewer.visible {
+            display: block;
+        }
+
+        .log-viewer .log-line {
+            color: #d4d4d4;
+            margin: 0;
+            padding: 2px 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .log-viewer .log-line.error {
+            color: #f44336;
+        }
+
+        .log-viewer .log-line.success {
+            color: #4CAF50;
+        }
+
+        .log-viewer .log-line.warning {
+            color: #ff9800;
+        }
+
+        .log-viewer .log-line.info {
+            color: #2196F3;
+        }
+
+        .log-viewer .log-line.command {
+            color: #9cdcfe;
+        }
+
+        .log-toggle {
+            background: #333;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        .log-toggle:hover {
+            background: #444;
+        }
+
         .validation-section {
             margin-top: 30px;
             padding-top: 20px;
@@ -1123,11 +1311,6 @@ HTML_TEMPLATE = """
                             `}
                         </div>
                         <div id="curationButtonArea" style="margin-top: 15px;"></div>
-
-                        <h3 class="section-title" style="margin-top: 25px;">Manual Validation</h3>
-                        <button class="validation-btn btn-valid" onclick="markValid(${index})">✓ Valid</button>
-                        <button class="validation-btn btn-invalid" onclick="markInvalid(${index})">✗ Invalid</button>
-                        <p class="validation-status" id="validationStatus"></p>
                     </div>
 
                     <p class="scraped-time">Scraped: ${new Date(product.scraped_at).toLocaleString()}</p>
@@ -1602,6 +1785,40 @@ HTML_TEMPLATE = """
             const byCurator = stats.by_curator;
             const recentActivity = stats.recent_activity;
 
+            // Build scraper section
+            const scraperHtml = `
+                <div class="scraper-section">
+                    <h3>🔍 Want to Scrape?</h3>
+                    <p style="color: #666; margin-bottom: 15px;">Scrape new products from Zara. Already-scraped products will be skipped automatically.</p>
+
+                    <div class="scraper-controls">
+                        <label>Categories:</label>
+                        <select id="scraperCategories" multiple style="height: 70px;">
+                            <option value="tshirts" selected>T-Shirts</option>
+                            <option value="pants" selected>Pants</option>
+                            <option value="jackets" selected>Jackets</option>
+                        </select>
+
+                        <label>Products per category:</label>
+                        <input type="number" id="scraperProductCount" value="2" min="1" max="20" style="width: 60px;">
+                    </div>
+
+                    <button class="go-btn" id="scraperGoBtn" onclick="startScraper()">🚀 GO</button>
+
+                    <div class="progress-container" id="scraperProgress">
+                        <div class="progress-status" id="progressStatus">Starting scraper...</div>
+                        <div class="progress-bar-wrapper">
+                            <div class="progress-bar" id="progressBar"></div>
+                        </div>
+                        <div class="progress-text" id="progressText">0 products processed</div>
+                        <div class="progress-details" id="progressDetails"></div>
+
+                        <button class="log-toggle" id="logToggle" onclick="toggleLogViewer()">📋 Show Logs</button>
+                        <div class="log-viewer" id="logViewer"></div>
+                    </div>
+                </div>
+            `;
+
             // Build stat cards
             const statCardsHtml = `
                 <div class="dashboard-grid">
@@ -1668,6 +1885,8 @@ HTML_TEMPLATE = """
 
             // Render HTML
             document.getElementById('dashboardContent').innerHTML = `
+                ${scraperHtml}
+
                 ${statCardsHtml}
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
@@ -1693,29 +1912,284 @@ HTML_TEMPLATE = """
             renderCategoryChart(byCategory);
             renderCuratorChart(byCurator);
             renderProgressChart(overview);
+
+            // Check if scraper is already running
+            checkScraperStatus();
+        }
+
+        // ============================================
+        // SCRAPER FUNCTIONALITY
+        // ============================================
+
+        let scraperPollingInterval = null;
+
+        async function startScraper() {
+            const categoriesSelect = document.getElementById('scraperCategories');
+            const productCountInput = document.getElementById('scraperProductCount');
+            const goBtn = document.getElementById('scraperGoBtn');
+
+            // Get selected categories
+            const selectedCategories = Array.from(categoriesSelect.selectedOptions).map(opt => opt.value);
+            const productsPerCategory = parseInt(productCountInput.value) || 2;
+
+            if (selectedCategories.length === 0) {
+                alert('Please select at least one category');
+                return;
+            }
+
+            // Disable button
+            goBtn.disabled = true;
+            goBtn.textContent = '⏳ Starting...';
+
+            try {
+                const response = await fetch('/api/scraper/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        categories: selectedCategories,
+                        products_per_category: productsPerCategory
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    // Show progress container
+                    document.getElementById('scraperProgress').classList.add('visible');
+                    goBtn.textContent = '🔄 Scraping...';
+
+                    // Start polling for status
+                    startScraperPolling();
+                } else {
+                    alert('Failed to start scraper: ' + result.error);
+                    goBtn.disabled = false;
+                    goBtn.textContent = '🚀 GO';
+                }
+            } catch (error) {
+                console.error('Error starting scraper:', error);
+                alert('Error starting scraper');
+                goBtn.disabled = false;
+                goBtn.textContent = '🚀 GO';
+            }
+        }
+
+        function startScraperPolling() {
+            // Clear any existing interval
+            if (scraperPollingInterval) {
+                clearInterval(scraperPollingInterval);
+            }
+
+            // Poll every second
+            scraperPollingInterval = setInterval(checkScraperStatus, 1000);
+        }
+
+        async function checkScraperStatus() {
+            try {
+                const response = await fetch('/api/scraper/status');
+                const status = await response.json();
+
+                const progressContainer = document.getElementById('scraperProgress');
+                const progressBar = document.getElementById('progressBar');
+                const progressStatus = document.getElementById('progressStatus');
+                const progressText = document.getElementById('progressText');
+                const progressDetails = document.getElementById('progressDetails');
+                const goBtn = document.getElementById('scraperGoBtn');
+                const logViewer = document.getElementById('logViewer');
+
+                // Don't update if elements don't exist (not on dashboard tab)
+                if (!progressContainer) return;
+
+                // Update log viewer
+                if (logViewer && status.logs && status.logs.length > 0) {
+                    logViewer.innerHTML = status.logs.map(line => {
+                        let lineClass = 'log-line';
+                        if (line.startsWith('$')) lineClass += ' command';
+                        else if (line.includes('❌') || line.includes('Error') || line.includes('error')) lineClass += ' error';
+                        else if (line.includes('✅') || line.includes('✓')) lineClass += ' success';
+                        else if (line.includes('⏭️') || line.includes('Skipping')) lineClass += ' warning';
+                        else if (line.includes('Processing') || line.includes('Extracting')) lineClass += ' info';
+                        return `<div class="${lineClass}">${line}</div>`;
+                    }).join('');
+                    // Auto-scroll to bottom
+                    logViewer.scrollTop = logViewer.scrollHeight;
+                }
+
+                if (status.running) {
+                    progressContainer.classList.add('visible');
+                    goBtn.disabled = true;
+                    goBtn.textContent = '🔄 Scraping...';
+
+                    // Update progress bar
+                    const total = status.total || 1;
+                    const progress = status.progress || 0;
+                    const percent = Math.min((progress / total) * 100, 100);
+                    progressBar.style.width = percent + '%';
+
+                    // Update status text
+                    progressStatus.textContent = `Category: ${status.current_category || 'Starting...'}`;
+                    progressText.textContent = `${status.products_scraped} scraped, ${status.products_skipped} skipped`;
+                    if (status.current_product) {
+                        progressDetails.textContent = `Current: ${status.current_product}`;
+                    }
+                } else if (status.completed && !status.refresh_handled) {
+                    // Scraping completed - only refresh once
+                    clearInterval(scraperPollingInterval);
+                    scraperPollingInterval = null;
+
+                    progressBar.style.width = '100%';
+                    progressStatus.textContent = '✅ Scraping Complete!';
+                    progressText.textContent = `${status.products_scraped} new products scraped, ${status.products_skipped} skipped`;
+                    progressDetails.textContent = 'Refreshing dashboard...';
+
+                    goBtn.disabled = false;
+                    goBtn.textContent = '🚀 GO';
+
+                    // Mark refresh as handled to prevent loops
+                    fetch('/api/scraper/reset', { method: 'POST' });
+
+                    // Auto-refresh after 2 seconds
+                    setTimeout(() => {
+                        // Reload products
+                        loadProducts();
+                        // Reload dashboard stats only (not full reload to avoid loop)
+                        refreshDashboardStats();
+                        progressDetails.textContent = 'Dashboard updated!';
+                    }, 2000);
+                } else if (status.completed && status.refresh_handled) {
+                    // Already handled, just show completed state
+                    progressContainer.classList.add('visible');
+                    progressBar.style.width = '100%';
+                    progressStatus.textContent = '✅ Scraping Complete!';
+                    progressText.textContent = `${status.products_scraped} new products scraped, ${status.products_skipped} skipped`;
+                    progressDetails.textContent = 'Dashboard updated!';
+                    goBtn.disabled = false;
+                    goBtn.textContent = '🚀 GO';
+                } else if (status.error) {
+                    // Error occurred
+                    clearInterval(scraperPollingInterval);
+                    scraperPollingInterval = null;
+
+                    progressStatus.textContent = '❌ Error';
+                    progressText.textContent = status.error;
+                    progressDetails.textContent = 'Check logs for details';
+
+                    // Auto-show logs on error
+                    if (logViewer) {
+                        logViewer.classList.add('visible');
+                        const logToggle = document.getElementById('logToggle');
+                        if (logToggle) logToggle.textContent = '📋 Hide Logs';
+                    }
+
+                    goBtn.disabled = false;
+                    goBtn.textContent = '🚀 GO';
+                } else {
+                    // Not running, hide progress
+                    progressContainer.classList.remove('visible');
+                    goBtn.disabled = false;
+                    goBtn.textContent = '🚀 GO';
+                }
+            } catch (error) {
+                console.error('Error checking scraper status:', error);
+            }
+        }
+
+        function toggleLogViewer() {
+            const logViewer = document.getElementById('logViewer');
+            const logToggle = document.getElementById('logToggle');
+
+            if (logViewer.classList.contains('visible')) {
+                logViewer.classList.remove('visible');
+                logToggle.textContent = '📋 Show Logs';
+            } else {
+                logViewer.classList.add('visible');
+                logToggle.textContent = '📋 Hide Logs';
+            }
+        }
+
+        async function refreshDashboardStats() {
+            // Refresh only the statistics without re-rendering the scraper section
+            // This prevents the refresh loop issue
+            try {
+                const response = await fetch('/api/dashboard/stats');
+                const stats = await response.json();
+
+                if (stats.error) {
+                    console.error('Error refreshing stats:', stats.error);
+                    return;
+                }
+
+                // Just update the stat card values
+                const overview = stats.overview;
+
+                // Find and update stat cards by their labels
+                const statCards = document.querySelectorAll('.stat-card');
+                statCards.forEach(card => {
+                    const label = card.querySelector('.stat-label');
+                    const value = card.querySelector('.stat-value');
+                    if (!label || !value) return;
+
+                    const labelText = label.textContent.toLowerCase();
+                    if (labelText.includes('total products')) {
+                        value.textContent = overview.total_products;
+                    } else if (labelText.includes('curated complete')) {
+                        value.textContent = overview.curated_products;
+                    } else if (labelText.includes('pending')) {
+                        value.textContent = overview.pending_products;
+                    } else if (labelText.includes('progress')) {
+                        value.textContent = overview.percent_complete + '%';
+                    } else if (labelText.includes('tags added')) {
+                        value.textContent = overview.total_curated_tags;
+                    } else if (labelText.includes('tags rejected')) {
+                        value.textContent = overview.total_rejected_tags;
+                    }
+                });
+
+                // Update charts
+                renderCategoryChart(stats.by_category);
+                renderCuratorChart(stats.by_curator);
+                renderProgressChart(overview);
+
+                console.log('Dashboard stats refreshed');
+            } catch (error) {
+                console.error('Error refreshing dashboard stats:', error);
+            }
         }
 
         function renderCategoryChart(byCategory) {
             const categories = Object.keys(byCategory);
-            const curated = categories.map(c => byCategory[c].curated);
-            const pending = categories.map(c => byCategory[c].pending);
 
-            const data = [
-                {
-                    x: categories,
-                    y: curated,
-                    name: 'Curated',
-                    type: 'bar',
-                    marker: { color: '#4CAF50' }
-                },
-                {
-                    x: categories,
-                    y: pending,
-                    name: 'Pending',
-                    type: 'bar',
-                    marker: { color: '#ff9800' }
+            // Build stacked bars by curator instead of generic "Curated"
+            const allCurators = ['Reed', 'Gigi', 'Kiki'];
+            const curatorTraces = [];
+
+            // Create a trace for each curator
+            allCurators.forEach(curator => {
+                const colorInfo = curatorColors[curator];
+                const values = categories.map(cat => {
+                    const byCurator = byCategory[cat].by_curator || {};
+                    return byCurator[curator] || 0;
+                });
+
+                // Only add trace if this curator has any data
+                if (values.some(v => v > 0)) {
+                    curatorTraces.push({
+                        x: categories,
+                        y: values,
+                        name: curator,
+                        type: 'bar',
+                        marker: { color: colorInfo ? colorInfo.bg : '#999' }
+                    });
                 }
-            ];
+            });
+
+            // Add pending trace
+            const pending = categories.map(c => byCategory[c].pending);
+            curatorTraces.push({
+                x: categories,
+                y: pending,
+                name: 'Pending',
+                type: 'bar',
+                marker: { color: '#ff9800' }
+            });
 
             const layout = {
                 barmode: 'stack',
@@ -1724,7 +2198,7 @@ HTML_TEMPLATE = """
                 xaxis: { tickangle: -45 }
             };
 
-            Plotly.newPlot('categoryChart', data, layout, { responsive: true });
+            Plotly.newPlot('categoryChart', curatorTraces, layout, { responsive: true });
         }
 
         function renderCuratorChart(byCurator) {
@@ -1735,27 +2209,33 @@ HTML_TEMPLATE = """
                 return;
             }
 
+            // Get curator colors to match the rest of the UI
+            const curatorBarColors = curators.map(c => {
+                const colorInfo = curatorColors[c];
+                return colorInfo ? colorInfo.bg : '#999';
+            });
+
             const data = [
                 {
                     x: curators,
                     y: curators.map(c => byCurator[c].completed),
                     name: 'Products Completed',
                     type: 'bar',
-                    marker: { color: '#4CAF50' }
+                    marker: { color: curatorBarColors }
                 },
                 {
                     x: curators,
                     y: curators.map(c => byCurator[c].tags_added),
                     name: 'Tags Added',
                     type: 'bar',
-                    marker: { color: '#2196F3' }
+                    marker: { color: curatorBarColors.map(c => c + '99') }  // Slightly transparent
                 },
                 {
                     x: curators,
                     y: curators.map(c => byCurator[c].tags_rejected),
                     name: 'Tags Rejected',
                     type: 'bar',
-                    marker: { color: '#f44336' }
+                    marker: { color: curatorBarColors.map(c => c + '66') }  // More transparent
                 }
             ];
 
@@ -1769,13 +2249,44 @@ HTML_TEMPLATE = """
         }
 
         function renderProgressChart(overview) {
+            // Build values, labels, and colors arrays based on curated_by_curator
+            const values = [];
+            const labels = [];
+            const colors = [];
+
+            // Add curator-specific slices if curated_by_curator data is available
+            if (overview.curated_by_curator) {
+                const allCurators = ['Reed', 'Gigi', 'Kiki'];
+                allCurators.forEach(curator => {
+                    const count = overview.curated_by_curator[curator] || 0;
+                    if (count > 0) {
+                        values.push(count);
+                        labels.push(`${curator} Curated`);
+                        const colorInfo = curatorColors[curator];
+                        colors.push(colorInfo ? colorInfo.bg : '#999');
+                    }
+                });
+            } else if (overview.curated_products > 0) {
+                // Fallback if no curator breakdown available
+                values.push(overview.curated_products);
+                labels.push('Curated');
+                colors.push('#4CAF50');
+            }
+
+            // Add pending products
+            if (overview.pending_products > 0) {
+                values.push(overview.pending_products);
+                labels.push('Pending');
+                colors.push('#ff9800');
+            }
+
             const data = [{
-                values: [overview.curated_products, overview.pending_products],
-                labels: ['Curated', 'Pending'],
+                values: values,
+                labels: labels,
                 type: 'pie',
                 hole: 0.6,
                 marker: {
-                    colors: ['#4CAF50', '#ff9800']
+                    colors: colors
                 },
                 textinfo: 'label+percent',
                 textposition: 'outside'
@@ -2161,7 +2672,8 @@ def get_dashboard_stats():
 
         # Get curation statuses
         curation_result = supabase_client.table("curation_status").select("*").execute()
-        curated_ids = {c["product_id"] for c in (curation_result.data or [])}
+        curation_data = curation_result.data or []
+        curated_ids = {c["product_id"]: c["curator"] for c in curation_data}
 
         # Get curated metadata counts
         curated_meta_result = (
@@ -2180,21 +2692,30 @@ def get_dashboard_stats():
         curated_products = len(curated_ids)
         pending_products = total_products - curated_products
 
-        # Category breakdown
+        # Category breakdown with curator info
         category_stats = {}
         for p in products:
             cat = p.get("category", "Unknown")
             if cat not in category_stats:
-                category_stats[cat] = {"total": 0, "curated": 0, "pending": 0}
+                category_stats[cat] = {
+                    "total": 0,
+                    "curated": 0,
+                    "pending": 0,
+                    "by_curator": {},
+                }
             category_stats[cat]["total"] += 1
             if p["product_id"] in curated_ids:
                 category_stats[cat]["curated"] += 1
+                curator = curated_ids[p["product_id"]]
+                if curator not in category_stats[cat]["by_curator"]:
+                    category_stats[cat]["by_curator"][curator] = 0
+                category_stats[cat]["by_curator"][curator] += 1
             else:
                 category_stats[cat]["pending"] += 1
 
         # Curator activity
         curator_stats = {}
-        for c in curation_result.data or []:
+        for c in curation_data:
             curator = c.get("curator", "Unknown")
             if curator not in curator_stats:
                 curator_stats[curator] = {
@@ -2224,9 +2745,17 @@ def get_dashboard_stats():
                 }
             curator_stats[curator]["tags_rejected"] += 1
 
+        # Curated by curator breakdown for pie chart
+        curated_by_curator = {}
+        for c in curation_data:
+            curator = c.get("curator", "Unknown")
+            if curator not in curated_by_curator:
+                curated_by_curator[curator] = 0
+            curated_by_curator[curator] += 1
+
         # Recent activity (last 10 curated products)
         recent_curation = sorted(
-            curation_result.data or [],
+            curation_data,
             key=lambda x: x.get("created_at", ""),
             reverse=True,
         )[:10]
@@ -2244,6 +2773,7 @@ def get_dashboard_stats():
                     ),
                     "total_curated_tags": len(curated_metadata),
                     "total_rejected_tags": len(rejected_tags),
+                    "curated_by_curator": curated_by_curator,
                 },
                 "by_category": category_stats,
                 "by_curator": curator_stats,
@@ -2259,6 +2789,164 @@ def serve_image(category, product_id, filename):
     """Serve product images from local files."""
     image_dir = DATA_DIR / category / product_id
     return send_from_directory(image_dir, filename)
+
+
+# ============================================
+# SCRAPER ENDPOINTS
+# ============================================
+
+
+def run_scraper_process(categories, products_per_category):
+    """Run the scraper in a background thread."""
+    global scraper_status
+    import time
+
+    scraper_status["running"] = True
+    scraper_status["completed"] = False
+    scraper_status["error"] = None
+    scraper_status["progress"] = 0
+    scraper_status["products_scraped"] = 0
+    scraper_status["products_skipped"] = 0
+    scraper_status["start_time"] = time.time()
+    scraper_status["total"] = len(categories) * products_per_category
+    scraper_status["logs"] = []  # Clear previous logs
+
+    try:
+        # Build the command
+        cmd = [
+            "python",
+            str(Path(__file__).parent / "main.py"),
+            "--products",
+            str(products_per_category),
+            "--categories",
+        ] + categories
+
+        # Add supabase flag if we're using it
+        if not USE_SUPABASE:
+            cmd.append("--no-supabase")
+
+        # Run the scraper process
+        scraper_status["current_category"] = "Starting..."
+        scraper_status["logs"].append(f"$ {' '.join(cmd)}")
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=str(Path(__file__).parent),
+        )
+
+        # Read output line by line to track progress
+        for line in iter(process.stdout.readline, ""):
+            line = line.strip()
+            if not line:
+                continue
+
+            # Add to logs (keep last 100 lines)
+            scraper_status["logs"].append(line)
+            if len(scraper_status["logs"]) > 100:
+                scraper_status["logs"] = scraper_status["logs"][-100:]
+
+            # Parse progress from output
+            if "Processing category:" in line:
+                cat = line.split("Processing category:")[-1].strip()
+                scraper_status["current_category"] = cat
+            elif "Extracting product:" in line or "Scraping:" in line:
+                scraper_status["current_product"] = line.split(":")[-1].strip()[:50]
+            elif "Skipping already scraped" in line:
+                scraper_status["products_skipped"] += 1
+                scraper_status["progress"] = (
+                    scraper_status["products_scraped"]
+                    + scraper_status["products_skipped"]
+                )
+            elif "Saved to Supabase" in line or "Saved product" in line:
+                scraper_status["products_scraped"] += 1
+                scraper_status["progress"] = (
+                    scraper_status["products_scraped"]
+                    + scraper_status["products_skipped"]
+                )
+            elif "Extracted" in line and "new products" in line:
+                # Extract count from "Extracted X new products"
+                try:
+                    count = int(line.split("Extracted")[1].split("new")[0].strip())
+                    scraper_status["products_scraped"] = count
+                except (ValueError, IndexError):
+                    pass
+
+        process.wait()
+
+        if process.returncode == 0:
+            scraper_status["completed"] = True
+            scraper_status["current_category"] = "Complete!"
+            scraper_status["current_product"] = ""
+            scraper_status["logs"].append("✅ Scraping completed successfully!")
+        else:
+            scraper_status["error"] = (
+                f"Process exited with code {process.returncode}. Check logs for details."
+            )
+            scraper_status["logs"].append(
+                f"❌ Process exited with code {process.returncode}"
+            )
+
+    except Exception as e:
+        scraper_status["error"] = str(e)
+        scraper_status["logs"].append(f"❌ Error: {str(e)}")
+    finally:
+        scraper_status["running"] = False
+        scraper_status["end_time"] = time.time()
+
+
+@app.route("/api/scraper/start", methods=["POST"])
+def start_scraper():
+    """Start the web scraper process."""
+    global scraper_status
+
+    if scraper_status["running"]:
+        return jsonify({"error": "Scraper is already running"}), 400
+
+    # Reset status for new scrape
+    scraper_status["refresh_handled"] = False
+    scraper_status["completed"] = False
+    scraper_status["error"] = None
+
+    data = request.get_json() or {}
+    categories = data.get("categories", ["tshirts", "pants", "jackets"])
+    products_per_category = data.get("products_per_category", 2)
+
+    # Start scraper in background thread
+    thread = threading.Thread(
+        target=run_scraper_process,
+        args=(categories, products_per_category),
+        daemon=True,
+    )
+    thread.start()
+
+    return jsonify({"success": True, "message": "Scraper started"})
+
+
+@app.route("/api/scraper/status")
+def get_scraper_status():
+    """Get the current scraper status."""
+    return jsonify(scraper_status)
+
+
+@app.route("/api/scraper/stop", methods=["POST"])
+def stop_scraper():
+    """Stop the scraper (not fully implemented - would need process tracking)."""
+    global scraper_status
+    # Note: This is a soft stop - sets a flag but doesn't kill the process
+    scraper_status["running"] = False
+    scraper_status["error"] = "Stopped by user"
+    return jsonify({"success": True, "message": "Stop requested"})
+
+
+@app.route("/api/scraper/reset", methods=["POST"])
+def reset_scraper_status():
+    """Reset scraper status after refresh has been handled."""
+    global scraper_status
+    scraper_status["refresh_handled"] = True
+    return jsonify({"success": True})
 
 
 def parse_args():
