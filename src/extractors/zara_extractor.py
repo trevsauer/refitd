@@ -424,30 +424,96 @@ class ZaraExtractor:
         except:
             return []
 
-    async def _extract_sizes(self, page: Page) -> list[str]:
-        """Extract available sizes."""
+    async def _extract_sizes(self, page: Page) -> list[dict]:
+        """Extract available sizes with availability status.
+
+        Returns a list of dicts: [{"size": "M", "available": true}, ...]
+        """
         try:
             sizes = await page.evaluate(
                 """
                 () => {
                     const sizes = [];
-                    const selectors = [
-                        '.size-selector__size-list button span',
-                        '.product-size-selector__size-list li',
+                    const seenSizes = new Set();
+
+                    // Try different selector strategies for Zara's size buttons
+                    const buttonSelectors = [
+                        '.size-selector__size-list button',
+                        '.product-size-selector__size-list button',
                         '[class*="size-selector"] button',
-                        '[data-qa="size-selector"] span'
+                        '[data-qa="size-selector"] button',
+                        '.product-detail-size-selector button',
+                        '[class*="SizeSelector"] button'
                     ];
 
-                    for (const sel of selectors) {
-                        const elements = document.querySelectorAll(sel);
-                        for (const el of elements) {
-                            const text = el.textContent.trim();
-                            if (text && !sizes.includes(text) && text.length < 10) {
-                                sizes.push(text);
+                    for (const sel of buttonSelectors) {
+                        const buttons = document.querySelectorAll(sel);
+                        for (const btn of buttons) {
+                            // Get the size text from span or button itself
+                            const span = btn.querySelector('span');
+                            const text = (span ? span.textContent : btn.textContent).trim();
+
+                            // Skip invalid entries
+                            if (!text || text.length > 10 || text === 'Add' || seenSizes.has(text)) {
+                                continue;
                             }
+
+                            // Check if size is available (not disabled/out of stock)
+                            // Zara uses various patterns to indicate unavailability
+                            const isDisabled = btn.disabled ||
+                                btn.hasAttribute('disabled') ||
+                                btn.classList.contains('is-disabled') ||
+                                btn.classList.contains('size-selector__size--disabled') ||
+                                btn.classList.contains('disabled') ||
+                                btn.classList.contains('out-of-stock') ||
+                                btn.getAttribute('aria-disabled') === 'true' ||
+                                btn.closest('[class*="disabled"]') !== null;
+
+                            // Also check for visual indicators (strikethrough, grayed out)
+                            const style = window.getComputedStyle(btn);
+                            const hasStrikethrough = style.textDecoration.includes('line-through');
+                            const isGrayedOut = parseFloat(style.opacity) < 0.5;
+
+                            const available = !isDisabled && !hasStrikethrough && !isGrayedOut;
+
+                            sizes.push({
+                                size: text,
+                                available: available
+                            });
+                            seenSizes.add(text);
                         }
                         if (sizes.length > 0) break;
                     }
+
+                    // Fallback: try list items if buttons didn't work
+                    if (sizes.length === 0) {
+                        const liSelectors = [
+                            '.size-selector__size-list li',
+                            '.product-size-selector__size-list li'
+                        ];
+
+                        for (const sel of liSelectors) {
+                            const items = document.querySelectorAll(sel);
+                            for (const li of items) {
+                                const text = li.textContent.trim();
+                                if (!text || text.length > 10 || text === 'Add' || seenSizes.has(text)) {
+                                    continue;
+                                }
+
+                                const isDisabled = li.classList.contains('is-disabled') ||
+                                    li.classList.contains('disabled') ||
+                                    li.classList.contains('out-of-stock');
+
+                                sizes.push({
+                                    size: text,
+                                    available: !isDisabled
+                                });
+                                seenSizes.add(text);
+                            }
+                            if (sizes.length > 0) break;
+                        }
+                    }
+
                     return sizes;
                 }
             """

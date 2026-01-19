@@ -83,7 +83,7 @@ class SupabaseLoader:
         currency: str = "USD",
         description: Optional[str] = None,
         colors: Optional[list[str]] = None,
-        sizes: Optional[list[str]] = None,
+        sizes: Optional[list] = None,
         materials: Optional[list[str]] = None,
         fit: Optional[str] = None,
         weight: Optional[dict] = None,
@@ -104,9 +104,12 @@ class SupabaseLoader:
             currency: Currency code
             description: Product description
             colors: Available colors
-            sizes: Available sizes
+            sizes: Available sizes (can be list of strings or list of dicts with availability)
             materials: Material composition
             fit: Fit type (slim, regular, etc.)
+            weight: Weight info with reasoning
+            style_tags: Style tags with reasoning
+            formality: Formality assessment
             image_urls: List of image URLs to download and store
 
         Returns:
@@ -119,6 +122,21 @@ class SupabaseLoader:
         if image_urls:
             image_paths = await self._upload_images(product_id, category, image_urls)
 
+        # Process sizes - handle both old format (list of strings) and new format (list of dicts)
+        sizes_list = sizes or []
+        sizes_availability = []
+        sizes_simple = []
+
+        for size_item in sizes_list:
+            if isinstance(size_item, dict):
+                # New format: {"size": "M", "available": true}
+                sizes_availability.append(size_item)
+                sizes_simple.append(size_item.get("size", ""))
+            else:
+                # Old format: just a string
+                sizes_simple.append(str(size_item))
+                sizes_availability.append({"size": str(size_item), "available": True})
+
         # Prepare product record
         product_data = {
             "product_id": product_id,
@@ -130,7 +148,8 @@ class SupabaseLoader:
             "currency": currency,
             "description": description,
             "colors": colors or [],
-            "sizes": sizes or [],
+            "sizes": sizes_simple,  # Keep simple list for backward compatibility
+            "sizes_availability": sizes_availability,  # New JSONB column with availability
             "materials": materials or [],
             "fit": fit,
             "weight": weight,

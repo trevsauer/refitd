@@ -44,6 +44,13 @@ class StyleTagInfo(BaseModel):
     reasoning: str  # Why this tag was applied
 
 
+class SizeInfo(BaseModel):
+    """Size with availability status."""
+
+    size: str
+    available: bool = True  # Whether the size is in stock
+
+
 class ProductMetadata(BaseModel):
     """Validated and cleaned product metadata."""
 

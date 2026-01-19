@@ -52,6 +52,24 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS weight JSONB;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS style_tags JSONB;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS formality JSONB;
 
+-- ============================================
+-- MIGRATION: Update sizes column to JSONB for availability tracking
+-- Run this to enable size availability tracking
+-- ============================================
+-- Note: This converts the existing TEXT[] to JSONB format
+-- Old format: ['S', 'M', 'L']
+-- New format: [{"size": "S", "available": true}, {"size": "M", "available": true}]
+
+-- First, add a new JSONB column for sizes with availability
+ALTER TABLE products ADD COLUMN IF NOT EXISTS sizes_availability JSONB DEFAULT '[]';
+
+-- If you want to migrate existing TEXT[] sizes to JSONB format, run:
+-- UPDATE products SET sizes_availability = (
+--     SELECT jsonb_agg(jsonb_build_object('size', s, 'available', true))
+--     FROM unnest(sizes) AS s
+-- )
+-- WHERE sizes IS NOT NULL AND array_length(sizes, 1) > 0;
+
 -- Enable Row Level Security (RLS) - optional but recommended
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 

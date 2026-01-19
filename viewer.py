@@ -115,6 +115,9 @@ def get_products_from_supabase():
                     "description": p.get("description"),
                     "colors": p.get("colors", []),
                     "sizes": p.get("sizes", []),
+                    "sizes_availability": p.get(
+                        "sizes_availability", []
+                    ),  # New field with availability
                     "materials": p.get("materials", []),
                     "images": image_paths,  # Store full paths for Supabase
                     "image_urls": [
@@ -1132,7 +1135,30 @@ HTML_TEMPLATE = """
 
             // Build tags
             const colorTags = (product.colors || []).map(c => `<span class="tag">${c}</span>`).join('');
-            const sizeTags = (product.sizes || []).filter(s => s && s.trim() && s !== 'Add').map(s => `<span class="tag">${s}</span>`).join('');
+
+            // Build size tags with availability styling
+            // Try to use sizes_availability first (new format with availability), fallback to sizes (old format)
+            const sizesAvailability = product.sizes_availability || [];
+            const sizesOld = (product.sizes || []).filter(s => s && s.trim() && s !== 'Add');
+
+            let sizeTags = '';
+            if (sizesAvailability.length > 0) {
+                // New format: [{"size": "M", "available": true}, ...]
+                sizeTags = sizesAvailability.map(s => {
+                    const sizeLabel = typeof s === 'object' ? s.size : s;
+                    const isAvailable = typeof s === 'object' ? s.available : true;
+
+                    if (isAvailable) {
+                        return `<span class="tag">${sizeLabel}</span>`;
+                    } else {
+                        return `<span class="tag" style="background: #ffebee; color: #c62828; text-decoration: line-through; opacity: 0.7;" title="Out of stock">${sizeLabel}</span>`;
+                    }
+                }).join('');
+            } else if (sizesOld.length > 0) {
+                // Old format: ["S", "M", "L"]
+                sizeTags = sizesOld.map(s => `<span class="tag">${s}</span>`).join('');
+            }
+
             const materialTags = (product.materials || []).map(m => `<span class="tag">${m}</span>`).join('');
             // Build style tags with reasoning (hover to see reasoning)
             const styleTags = (product.style_tags || []).map(s => {
