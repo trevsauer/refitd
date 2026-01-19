@@ -86,6 +86,9 @@ class SupabaseLoader:
         sizes: Optional[list[str]] = None,
         materials: Optional[list[str]] = None,
         fit: Optional[str] = None,
+        weight: Optional[dict] = None,
+        style_tags: Optional[list[dict]] = None,
+        formality: Optional[dict] = None,
         image_urls: Optional[list[str]] = None,
     ) -> dict:
         """
@@ -130,6 +133,9 @@ class SupabaseLoader:
             "sizes": sizes or [],
             "materials": materials or [],
             "fit": fit,
+            "weight": weight,
+            "style_tags": style_tags,
+            "formality": formality,
             "image_paths": image_paths,
             "image_count": len(image_paths),
             "scraped_at": datetime.utcnow().isoformat() + "Z",
@@ -167,7 +173,14 @@ class SupabaseLoader:
         """
         storage_paths = []
 
-        async with httpx.AsyncClient() as http_client:
+        # Headers to mimic a browser request (Zara blocks requests without proper headers)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.zara.com/",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        }
+
+        async with httpx.AsyncClient(headers=headers) as http_client:
             for i, url in enumerate(image_urls):
                 try:
                     # Download image

@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template_string, send_from_directory
+from flask import Flask, jsonify, render_template_string, request, send_from_directory
 
 # Load environment variables
 load_dotenv(Path(__file__).parent / ".env")
@@ -101,9 +101,11 @@ def get_products_from_supabase():
                         for path in image_paths
                     ],
                     "fit": p.get("fit"),
-                    "weight": None,
-                    "style_tags": [],
-                    "formality": None,
+                    "weight": p.get("weight"),  # Now loaded from DB as JSONB
+                    "style_tags": p.get(
+                        "style_tags", []
+                    ),  # Now loaded from DB as JSONB
+                    "formality": p.get("formality"),  # Now loaded from DB as JSONB
                     "scraped_at": p.get("scraped_at"),
                     "_source": "supabase",  # Mark source for frontend
                 }
@@ -164,6 +166,7 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zara Scraper - Product Viewer</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -197,6 +200,141 @@ HTML_TEMPLATE = """
             background: {{ '#4CAF50' if use_supabase else '#2196F3' }};
             display: inline-block;
             border-radius: 12px;
+        }
+
+        /* Curate Mode Styles */
+        .curate-btn {
+            background: #ff9800;
+            color: #fff;
+            border: none;
+            padding: 8px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-left: 15px;
+            transition: background 0.2s;
+        }
+
+        .curate-btn:hover {
+            background: #f57c00;
+        }
+
+        .curate-btn.active {
+            background: #4CAF50;
+        }
+
+        .curator-selector {
+            display: none;
+            margin-left: 10px;
+        }
+
+        .curator-selector.visible {
+            display: inline-block;
+        }
+
+        .curator-selector select {
+            padding: 8px 15px;
+            font-size: 14px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .curator-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .curator-reed { background: #4CAF50; color: white; }
+        .curator-gigi { background: #9C27B0; color: white; }
+        .curator-kiki { background: #E91E63; color: white; }
+
+        /* Curate Input Styles */
+        .curate-input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .curate-input {
+            flex: 1;
+            padding: 8px 12px;
+            font-size: 14px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .curate-input:focus {
+            border-color: #ff9800;
+        }
+
+        .curate-input::placeholder {
+            color: #999;
+        }
+
+        .curated-tag {
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: white;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .curated-tag .curator-name {
+            font-size: 10px;
+            opacity: 0.8;
+        }
+
+        .tag-delete-btn {
+            display: none;
+            margin-left: 5px;
+            background: rgba(255,0,0,0.2);
+            border: none;
+            color: #c00;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 3px;
+            line-height: 1;
+        }
+
+        .tag-delete-btn:hover {
+            background: rgba(255,0,0,0.4);
+        }
+
+        .curate-mode .tag-delete-btn {
+            display: inline-block;
+        }
+
+        .tag-container {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        /* Rejected inferred tag styling */
+        .rejected-tag {
+            background: #ffebee !important;
+            color: #c62828 !important;
+            text-decoration: line-through;
+            opacity: 0.7;
+        }
+
+        .rejected-tag .tag-delete-btn {
+            background: rgba(76, 175, 80, 0.2);
+            color: #2e7d32;
+        }
+
+        .rejected-tag .tag-delete-btn:hover {
+            background: rgba(76, 175, 80, 0.4);
         }
 
         .container {
@@ -399,6 +537,176 @@ HTML_TEMPLATE = """
             margin-bottom: 10px;
         }
 
+        /* Tab Navigation Styles */
+        .tab-nav {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            padding: 12px 30px;
+            font-size: 14px;
+            font-weight: 500;
+            border: 2px solid #000;
+            background: #fff;
+            color: #000;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+            background: #f5f5f5;
+        }
+
+        .tab-btn.active {
+            background: #000;
+            color: #fff;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Dashboard Styles */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-card .stat-value {
+            font-size: 42px;
+            font-weight: 700;
+            color: #000;
+        }
+
+        .stat-card .stat-label {
+            font-size: 14px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 5px;
+        }
+
+        .stat-card.success .stat-value { color: #4CAF50; }
+        .stat-card.warning .stat-value { color: #ff9800; }
+        .stat-card.info .stat-value { color: #2196F3; }
+
+        .chart-container {
+            background: #fff;
+            border-radius: 8px;
+            padding: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .activity-list {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .activity-item {
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        .activity-product {
+            font-weight: 500;
+        }
+
+        .activity-curator {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            color: #fff;
+        }
+
+        .activity-time {
+            font-size: 12px;
+            color: #999;
+        }
+
+        /* Mark Complete Button */
+        .complete-btn {
+            background: #4CAF50;
+            color: #fff;
+            border: none;
+            padding: 12px 25px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s;
+            margin-right: 10px;
+        }
+
+        .complete-btn:hover {
+            background: #388E3C;
+        }
+
+        .complete-btn.completed {
+            background: #81C784;
+        }
+
+        .complete-btn.undo {
+            background: #ff9800;
+        }
+
+        .complete-btn.undo:hover {
+            background: #f57c00;
+        }
+
+        .curation-status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+
+        .curation-status-badge.complete {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .curation-status-badge.pending {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
         .validation-section {
             margin-top: 30px;
             padding-top: 20px;
@@ -439,19 +747,49 @@ HTML_TEMPLATE = """
 <body>
     <header>
         <h1>ZARA PRODUCT VIEWER</h1>
-        <span class="data-source">{{ '🗄️ Supabase Database' if use_supabase else '📁 Local Files' }}</span>
+        <div style="margin-top: 10px;">
+            <span class="data-source">{{ '🗄️ Supabase Database' if use_supabase else '📁 Local Files' }}</span>
+            <button class="curate-btn" id="curateBtn" onclick="toggleCurateMode()">✏️ Curate</button>
+            <span class="curator-selector" id="curatorSelector">
+                <select id="curatorSelect" onchange="selectCurator(this.value)">
+                    <option value="">Select curator...</option>
+                    <option value="Reed">Reed</option>
+                    <option value="Gigi">Gigi</option>
+                    <option value="Kiki">Kiki</option>
+                </select>
+            </span>
+            <span class="curator-badge" id="curatorBadge" style="display: none;"></span>
+        </div>
     </header>
 
     <div class="container">
-        <div class="navigation">
-            <button class="nav-btn" id="prevBtn" onclick="navigate(-1)">← Previous</button>
-            <span class="counter" id="counter">Loading...</span>
-            <button class="nav-btn" id="nextBtn" onclick="navigate(1)">Next →</button>
+        <!-- Tab Navigation -->
+        <div class="tab-nav">
+            <button class="tab-btn active" id="tabProducts" onclick="switchTab('products')">📦 Products</button>
+            <button class="tab-btn" id="tabDashboard" onclick="switchTab('dashboard')">📊 Dashboard</button>
         </div>
 
-        <div id="productCard" class="product-card">
-            <div class="no-data">
-                <h2>Loading products...</h2>
+        <!-- Products Tab Content -->
+        <div id="productsTab" class="tab-content active">
+            <div class="navigation">
+                <button class="nav-btn" id="prevBtn" onclick="navigate(-1)">← Previous</button>
+                <span class="counter" id="counter">Loading...</span>
+                <button class="nav-btn" id="nextBtn" onclick="navigate(1)">Next →</button>
+            </div>
+
+            <div id="productCard" class="product-card">
+                <div class="no-data">
+                    <h2>Loading products...</h2>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Tab Content -->
+        <div id="dashboardTab" class="tab-content">
+            <div id="dashboardContent">
+                <div class="no-data">
+                    <h2>Loading dashboard...</h2>
+                </div>
             </div>
         </div>
     </div>
@@ -502,7 +840,7 @@ HTML_TEMPLATE = """
             return 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500" fill="%23ccc"><rect width="100%" height="100%"/><text x="50%" y="50%" text-anchor="middle" fill="%23999">No Image</text></svg>';
         }
 
-        function displayProduct(index) {
+        async function displayProduct(index) {
             if (index < 0 || index >= products.length) return;
 
             currentIndex = index;
@@ -515,6 +853,62 @@ HTML_TEMPLATE = """
             // Update navigation buttons
             document.getElementById('prevBtn').disabled = index === 0;
             document.getElementById('nextBtn').disabled = index === products.length - 1;
+
+            // Fetch curated metadata for this product (if using Supabase)
+            let curatedTags = [];
+            let curatedFit = [];
+            let curatedWeight = [];
+            let rejectedTags = [];
+            let curationStatus = null;
+            if (useSupabase) {
+                // Fetch curated data
+                try {
+                    const curatedResponse = await fetch(`/api/curated/${product.product_id}`);
+                    const curatedData = await curatedResponse.json();
+                    if (Array.isArray(curatedData)) {
+                        curatedTags = curatedData.filter(c => c.field_name === 'style_tag');
+                        curatedFit = curatedData.filter(c => c.field_name === 'fit');
+                        curatedWeight = curatedData.filter(c => c.field_name === 'weight');
+                    }
+                } catch (error) {
+                    console.error('Error fetching curated data:', error);
+                }
+
+                // Fetch rejected tags (may fail if table doesn't exist yet)
+                try {
+                    const rejectedResponse = await fetch(`/api/rejected_tags/${product.product_id}`);
+                    const rejectedData = await rejectedResponse.json();
+                    if (Array.isArray(rejectedData)) {
+                        rejectedTags = rejectedData;
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch rejected tags (table may not exist yet):', error);
+                }
+
+                // Fetch curation status
+                try {
+                    const statusResponse = await fetch(`/api/curation_status/${product.product_id}`);
+                    curationStatus = await statusResponse.json();
+                } catch (error) {
+                    console.warn('Could not fetch curation status:', error);
+                }
+            }
+
+            // Store for global access
+            window.currentCurationStatus = curationStatus;
+
+            // Store rejected tags globally for easy lookup
+            window.currentRejectedTags = rejectedTags;
+
+            // Helper function to check if an inferred tag is rejected
+            function isTagRejected(fieldName, fieldValue) {
+                return rejectedTags.some(r => r.field_name === fieldName && r.field_value === fieldValue);
+            }
+
+            // Helper function to get rejection info for a tag
+            function getRejectionInfo(fieldName, fieldValue) {
+                return rejectedTags.find(r => r.field_name === fieldName && r.field_value === fieldValue);
+            }
 
             // Build image gallery
             const images = product.images || [];
@@ -555,27 +949,58 @@ HTML_TEMPLATE = """
             // Build style tags with reasoning (hover to see reasoning)
             const styleTags = (product.style_tags || []).map(s => {
                 // Handle both old format (string) and new format (object with tag/reasoning)
-                if (typeof s === 'string') {
-                    return `<span class="tag" style="background:#e3f2fd;color:#1565c0;">${s}</span>`;
-                }
-                return `<span class="tag" style="background:#e3f2fd;color:#1565c0;cursor:help;" title="${s.reasoning || ''}">${s.tag}</span>`;
+                const tagValue = typeof s === 'string' ? s : s.tag;
+                const reasoning = typeof s === 'string' ? '' : (s.reasoning || '');
+                const isRejected = isTagRejected('style_tag', tagValue);
+                const rejectedClass = isRejected ? 'rejected-tag' : '';
+                const deleteTitle = isRejected ? 'Undo rejection (restore tag)' : 'Mark as incorrect';
+                const deleteSymbol = isRejected ? '↩' : '×';
+
+                return `<span class="tag-container">
+                    <span class="tag ${rejectedClass}" style="background:#e3f2fd;color:#1565c0;cursor:help;" title="${reasoning}" data-field="style_tag" data-value="${tagValue}" data-reasoning="${reasoning}" data-type="inferred">${tagValue}</span>
+                    <button class="tag-delete-btn" data-field="style_tag" data-value="${tagValue}" data-rejected="${isRejected}" onclick="handleTagDeleteClick(this)" title="${deleteTitle}">${deleteSymbol}</button>
+                </span>`;
             }).join('');
 
-            // Build fit badge
-            const fitBadge = product.fit ? `<span class="tag" style="background:#fff3e0;color:#e65100;">${product.fit}</span>` : '';
+            // Build fit badge (teal/cyan - distinct from curator colors)
+            let fitBadge = '';
+            if (product.fit) {
+                const fitValue = product.fit;
+                const isFitRejected = isTagRejected('fit', fitValue);
+                const fitRejectedClass = isFitRejected ? 'rejected-tag' : '';
+                const fitDeleteTitle = isFitRejected ? 'Undo rejection (restore tag)' : 'Mark as incorrect';
+                const fitDeleteSymbol = isFitRejected ? '↩' : '×';
 
-            // Build weight badge with reasoning (handle both old string format and new object format)
+                fitBadge = `<span class="tag-container">
+                    <span class="tag ${fitRejectedClass}" style="background:#e0f7fa;color:#00838f;" data-field="fit" data-value="${fitValue}" data-type="inferred">${fitValue}</span>
+                    <button class="tag-delete-btn" data-field="fit" data-value="${fitValue}" data-rejected="${isFitRejected}" data-reasoning="" onclick="handleTagDeleteClick(this)" title="${fitDeleteTitle}">${fitDeleteSymbol}</button>
+                </span>`;
+            }
+
+            // Build weight badge with reasoning (amber/gold - distinct from curator colors)
             let weightBadge = '';
             let weightReasoning = '';
             if (product.weight) {
+                let weightValue = '';
+                let weightReasoningText = '';
+
                 if (typeof product.weight === 'string') {
-                    // Old format: just a string
-                    weightBadge = `<span class="tag" style="background:#f3e5f5;color:#7b1fa2;">${product.weight}</span>`;
+                    weightValue = product.weight;
                 } else {
-                    // New format: object with value and reasoning
-                    weightBadge = `<span class="tag" style="background:#f3e5f5;color:#7b1fa2;">${product.weight.value}</span>`;
-                    weightReasoning = (product.weight.reasoning || []).join(' • ');
+                    weightValue = product.weight.value;
+                    weightReasoningText = (product.weight.reasoning || []).join(' • ');
+                    weightReasoning = weightReasoningText;
                 }
+
+                const isWeightRejected = isTagRejected('weight', weightValue);
+                const weightRejectedClass = isWeightRejected ? 'rejected-tag' : '';
+                const weightDeleteTitle = isWeightRejected ? 'Undo rejection (restore tag)' : 'Mark as incorrect';
+                const weightDeleteSymbol = isWeightRejected ? '↩' : '×';
+
+                weightBadge = `<span class="tag-container">
+                    <span class="tag ${weightRejectedClass}" style="background:#fff8e1;color:#ff8f00;" data-field="weight" data-value="${weightValue}" data-type="inferred">${weightValue}</span>
+                    <button class="tag-delete-btn" data-field="weight" data-value="${weightValue}" data-rejected="${isWeightRejected}" data-reasoning="${weightReasoningText}" onclick="handleTagDeleteClick(this)" title="${weightDeleteTitle}">${weightDeleteSymbol}</button>
+                </span>`;
             }
 
             // Build formality display
@@ -636,21 +1061,33 @@ HTML_TEMPLATE = """
 
                     ${formalityHtml}
 
-                    ${fitBadge ? `
+                    ${fitBadge || curatedFit.length > 0 ? `
                         <h3 class="section-title">Fit</h3>
-                        <div class="tag-list">${fitBadge}</div>
-                    ` : ''}
+                        <div class="tag-list" id="fitTagsList">${fitBadge}${renderCuratedTagsInline(curatedFit)}</div>
+                    ` : `
+                        <h3 class="section-title">Fit</h3>
+                        <div class="tag-list" id="fitTagsList"><span style="color:#999;font-size:13px;">Not specified</span></div>
+                    `}
+                    <div id="curateFitInput"></div>
 
-                    ${weightBadge ? `
+                    ${weightBadge || curatedWeight.length > 0 ? `
                         <h3 class="section-title">Weight</h3>
-                        <div class="tag-list">${weightBadge}</div>
+                        <div class="tag-list" id="weightTagsList">${weightBadge}${renderCuratedTagsInline(curatedWeight)}</div>
                         ${weightReasoning ? `<div style="font-size: 12px; color: #666; margin-top: 5px;"><em>${weightReasoning}</em></div>` : ''}
-                    ` : ''}
+                    ` : `
+                        <h3 class="section-title">Weight</h3>
+                        <div class="tag-list" id="weightTagsList"><span style="color:#999;font-size:13px;">Not specified</span></div>
+                    `}
+                    <div id="curateWeightInput"></div>
 
-                    ${styleTags ? `
+                    ${styleTags || curatedTags.length > 0 ? `
                         <h3 class="section-title">Style Tags <span style="font-size:10px;color:#999;font-weight:normal;">(hover for reasoning)</span></h3>
-                        <div class="tag-list">${styleTags}</div>
-                    ` : ''}
+                        <div class="tag-list" id="styleTagsList">${styleTags}${renderCuratedTagsInline(curatedTags)}</div>
+                    ` : `
+                        <h3 class="section-title">Style Tags</h3>
+                        <div class="tag-list" id="styleTagsList"><span style="color:#999;font-size:13px;">No style tags</span></div>
+                    `}
+                    <div id="curateStyleTagInput"></div>
 
                     ${product.description ? `
                         <h3 class="section-title">Description</h3>
@@ -676,7 +1113,18 @@ HTML_TEMPLATE = """
                     <a href="${product.url}" target="_blank" class="url-link">${product.url}</a>
 
                     <div class="validation-section">
-                        <h3 class="section-title">Manual Validation</h3>
+                        <h3 class="section-title">Curation Status</h3>
+                        <div id="curationStatusArea">
+                            ${curationStatus && curationStatus.status === 'complete' ? `
+                                <span class="curation-status-badge complete">✓ Curated by ${curationStatus.curator}</span>
+                                ${curationStatus.notes ? `<p style="font-size:12px;color:#666;margin-top:5px;">Notes: ${curationStatus.notes}</p>` : ''}
+                            ` : `
+                                <span class="curation-status-badge pending">⏳ Pending Curation</span>
+                            `}
+                        </div>
+                        <div id="curationButtonArea" style="margin-top: 15px;"></div>
+
+                        <h3 class="section-title" style="margin-top: 25px;">Manual Validation</h3>
                         <button class="validation-btn btn-valid" onclick="markValid(${index})">✓ Valid</button>
                         <button class="validation-btn btn-invalid" onclick="markInvalid(${index})">✗ Invalid</button>
                         <p class="validation-status" id="validationStatus"></p>
@@ -723,8 +1171,703 @@ HTML_TEMPLATE = """
             if (e.key === 'ArrowRight') navigate(1);
         });
 
+        // ============================================
+        // CURATE MODE FUNCTIONALITY
+        // ============================================
+        let curateMode = false;
+        let currentCurator = null;
+
+        const curatorColors = {
+            'Reed': { bg: '#4CAF50', class: 'curator-reed' },
+            'Gigi': { bg: '#9C27B0', class: 'curator-gigi' },
+            'Kiki': { bg: '#E91E63', class: 'curator-kiki' }
+        };
+
+        function renderCuratedTagsInline(curatedTags) {
+            if (!curatedTags || curatedTags.length === 0) {
+                return '';
+            }
+
+            return curatedTags.map(tag => {
+                const colorInfo = curatorColors[tag.curator] || { bg: '#999' };
+                return `<span class="tag-container">
+                    <span class="curated-tag" style="background: ${colorInfo.bg};" data-type="curated" data-field="${tag.field_name}" data-value="${tag.field_value}" data-curator="${tag.curator}">
+                        ${tag.field_value} <span class="curator-name">(${tag.curator})</span>
+                    </span>
+                    <button class="tag-delete-btn" onclick="handleCuratedTagDelete('${tag.field_name}', '${tag.field_value}', '${tag.curator}')" title="Delete curated tag">×</button>
+                </span>`;
+            }).join('');
+        }
+
+        function renderCuratedTags(curatedTags) {
+            if (!curatedTags || curatedTags.length === 0) {
+                return '';
+            }
+
+            const tagsHtml = curatedTags.map(tag => {
+                const colorInfo = curatorColors[tag.curator] || { bg: '#999' };
+                return `<span class="curated-tag" style="background: ${colorInfo.bg};">
+                    ${tag.field_value} <span class="curator-name">(${tag.curator})</span>
+                </span>`;
+            }).join('');
+
+            return `
+                <h3 class="section-title" style="margin-top: 15px;">Curated Tags</h3>
+                <div class="tag-list">${tagsHtml}</div>
+            `;
+        }
+
+        function toggleCurateMode() {
+            const btn = document.getElementById('curateBtn');
+            const selector = document.getElementById('curatorSelector');
+
+            if (!curateMode) {
+                // Entering curate mode - show curator selector
+                selector.classList.add('visible');
+                btn.textContent = '❌ Exit Curate';
+                btn.classList.add('active');
+                document.body.classList.add('curate-mode');
+                curateMode = true;
+            } else {
+                // Exiting curate mode
+                exitCurateMode();
+            }
+        }
+
+        function exitCurateMode() {
+            const btn = document.getElementById('curateBtn');
+            const selector = document.getElementById('curatorSelector');
+            const badge = document.getElementById('curatorBadge');
+
+            selector.classList.remove('visible');
+            badge.style.display = 'none';
+            btn.textContent = '✏️ Curate';
+            btn.classList.remove('active');
+            document.getElementById('curatorSelect').value = '';
+            document.body.classList.remove('curate-mode');
+
+            curateMode = false;
+            currentCurator = null;
+
+            // Re-render the product to hide curate inputs
+            if (products.length > 0) {
+                displayProduct(currentIndex);
+            }
+        }
+
+        async function selectCurator(curator) {
+            if (!curator) {
+                currentCurator = null;
+                document.getElementById('curatorBadge').style.display = 'none';
+                return;
+            }
+
+            currentCurator = curator;
+            const badge = document.getElementById('curatorBadge');
+            const colorInfo = curatorColors[curator];
+
+            badge.textContent = `Curating as: ${curator}`;
+            badge.className = `curator-badge ${colorInfo.class}`;
+            badge.style.display = 'inline-block';
+
+            // Re-render the product to show curate inputs (await since displayProduct is async)
+            await displayProduct(currentIndex);
+
+            // Show the curate input after render
+            showCurateInputs();
+        }
+
+        function showCurateInputs() {
+            if (!currentCurator) return;
+
+            const colorInfo = curatorColors[currentCurator];
+
+            // Style Tags input
+            const styleInputContainer = document.getElementById('curateStyleTagInput');
+            if (styleInputContainer) {
+                styleInputContainer.innerHTML = `
+                    <div class="curate-input-wrapper">
+                        <input type="text"
+                               class="curate-input"
+                               id="newStyleTagInput"
+                               placeholder="Add new style tag... (press Enter)"
+                               onkeypress="handleCurateKeypress(event, 'style_tag', 'styleTagsList')"
+                               style="border-color: ${colorInfo.bg};">
+                    </div>
+                `;
+            }
+
+            // Fit input
+            const fitInputContainer = document.getElementById('curateFitInput');
+            if (fitInputContainer) {
+                fitInputContainer.innerHTML = `
+                    <div class="curate-input-wrapper">
+                        <input type="text"
+                               class="curate-input"
+                               id="newFitInput"
+                               placeholder="Add fit value... (e.g., slim, relaxed, oversized)"
+                               onkeypress="handleCurateKeypress(event, 'fit', 'fitTagsList')"
+                               style="border-color: ${colorInfo.bg};">
+                    </div>
+                `;
+            }
+
+            // Weight input
+            const weightInputContainer = document.getElementById('curateWeightInput');
+            if (weightInputContainer) {
+                weightInputContainer.innerHTML = `
+                    <div class="curate-input-wrapper">
+                        <input type="text"
+                               class="curate-input"
+                               id="newWeightInput"
+                               placeholder="Add weight value... (e.g., light, medium, heavy)"
+                               onkeypress="handleCurateKeypress(event, 'weight', 'weightTagsList')"
+                               style="border-color: ${colorInfo.bg};">
+                    </div>
+                `;
+            }
+
+            // Mark as Complete button
+            const curationButtonArea = document.getElementById('curationButtonArea');
+            if (curationButtonArea) {
+                const curationStatus = window.currentCurationStatus;
+                if (curationStatus && curationStatus.status === 'complete') {
+                    curationButtonArea.innerHTML = `
+                        <button class="complete-btn undo" onclick="unmarkProductComplete()">↩ Undo Completion</button>
+                    `;
+                } else {
+                    curationButtonArea.innerHTML = `
+                        <button class="complete-btn" onclick="markProductComplete()">✓ Mark as Complete (Good as is)</button>
+                    `;
+                }
+            }
+        }
+
+        function handleCurateKeypress(event, fieldName, tagsListId) {
+            if (event.key === 'Enter') {
+                const input = event.target;
+                const tagValue = input.value.trim();
+
+                if (tagValue && currentCurator) {
+                    addCuratedField(tagValue, fieldName, tagsListId);
+                    input.value = '';
+                }
+            }
+        }
+
+        async function addCuratedField(tagValue, fieldName, tagsListId) {
+            const product = products[currentIndex];
+            const colorInfo = curatorColors[currentCurator];
+
+            // Add the tag to the display immediately
+            const tagsList = document.getElementById(tagsListId);
+
+            // Remove "Not specified" placeholder if present
+            const placeholder = tagsList.querySelector('span[style*="color:#999"]');
+            if (placeholder) {
+                placeholder.remove();
+            }
+
+            // Create the new curated tag element
+            const newTag = document.createElement('span');
+            newTag.className = 'curated-tag';
+            newTag.style.background = colorInfo.bg;
+            newTag.innerHTML = `${tagValue} <span class="curator-name">(${currentCurator})</span>`;
+            tagsList.appendChild(newTag);
+
+            // Save to database
+            try {
+                const response = await fetch('/api/curated', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: product.product_id,
+                        field_name: fieldName,
+                        field_value: tagValue,
+                        curator: currentCurator
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    console.log(`✓ Saved curated ${fieldName}: "${tagValue}" by ${currentCurator}`);
+                } else {
+                    console.error('Failed to save:', result.error);
+                }
+            } catch (error) {
+                console.error('Error saving curated field:', error);
+            }
+        }
+
+        // ============================================
+        // TAG DELETION FUNCTIONALITY
+        // ============================================
+
+        function handleTagDeleteClick(button) {
+            const fieldName = button.dataset.field;
+            const fieldValue = button.dataset.value;
+            const isRejected = button.dataset.rejected === 'true';
+            const reasoning = button.dataset.reasoning || '';
+
+            handleInferredTagDelete(fieldName, fieldValue, reasoning, isRejected);
+        }
+
+        async function handleCuratedTagDelete(fieldName, fieldValue, curator) {
+            if (!curateMode || !currentCurator) {
+                alert('Please enter curate mode first to delete tags.');
+                return;
+            }
+
+            const product = products[currentIndex];
+
+            if (!confirm(`Delete curated tag "${fieldValue}" added by ${curator}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/curated', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: product.product_id,
+                        field_name: fieldName,
+                        field_value: fieldValue,
+                        curator: curator
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success || result.error === undefined) {
+                    console.log(`✓ Deleted curated tag: "${fieldValue}" by ${curator}`);
+                    // Refresh the display
+                    await displayProduct(currentIndex);
+                    showCurateInputs();
+                } else {
+                    console.error('Failed to delete:', result.error);
+                    alert('Failed to delete tag: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error deleting curated tag:', error);
+                alert('Error deleting tag');
+            }
+        }
+
+        async function handleInferredTagDelete(fieldName, fieldValue, reasoning, isCurrentlyRejected) {
+            if (!curateMode || !currentCurator) {
+                alert('Please enter curate mode first to manage tags.');
+                return;
+            }
+
+            const product = products[currentIndex];
+
+            if (isCurrentlyRejected) {
+                // Undo rejection - restore the tag
+                if (!confirm(`Restore tag "${fieldValue}"? This will undo the rejection.`)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/rejected_tags', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            product_id: product.product_id,
+                            field_name: fieldName,
+                            field_value: fieldValue
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (result.success || result.error === undefined) {
+                        console.log(`✓ Restored inferred tag: "${fieldValue}"`);
+                        // Refresh the display
+                        await displayProduct(currentIndex);
+                        showCurateInputs();
+                    } else {
+                        console.error('Failed to restore:', result.error);
+                        alert('Failed to restore tag: ' + result.error);
+                    }
+                } catch (error) {
+                    console.error('Error restoring tag:', error);
+                    alert('Error restoring tag');
+                }
+            } else {
+                // Mark as rejected
+                const rejectionReason = prompt(`Mark "${fieldValue}" as incorrect?\n\nOptionally, enter why this tag is wrong (for ML training):`, '');
+
+                if (rejectionReason === null) {
+                    return; // User cancelled
+                }
+
+                try {
+                    const response = await fetch('/api/rejected_tags', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            product_id: product.product_id,
+                            field_name: fieldName,
+                            field_value: fieldValue,
+                            original_reasoning: reasoning,
+                            curator: currentCurator,
+                            rejection_reason: rejectionReason || null
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        console.log(`✓ Marked inferred tag as rejected: "${fieldValue}" (reason: ${rejectionReason || 'not provided'})`);
+                        // Refresh the display
+                        await displayProduct(currentIndex);
+                        showCurateInputs();
+                    } else {
+                        console.error('Failed to reject:', result.error);
+                        alert('Failed to mark as incorrect: ' + result.error);
+                    }
+                } catch (error) {
+                    console.error('Error rejecting tag:', error);
+                    alert('Error marking tag as incorrect');
+                }
+            }
+        }
+
         // Load products on page load
         loadProducts();
+
+        // ============================================
+        // TAB NAVIGATION
+        // ============================================
+
+        function switchTab(tab) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(tab === 'products' ? 'tabProducts' : 'tabDashboard').classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tab === 'products' ? 'productsTab' : 'dashboardTab').classList.add('active');
+
+            // Load dashboard data if switching to dashboard
+            if (tab === 'dashboard') {
+                loadDashboard();
+            }
+        }
+
+        // ============================================
+        // DASHBOARD FUNCTIONALITY
+        // ============================================
+
+        async function loadDashboard() {
+            const dashboardContent = document.getElementById('dashboardContent');
+
+            if (!useSupabase) {
+                dashboardContent.innerHTML = `
+                    <div class="no-data">
+                        <h2>Dashboard requires Supabase</h2>
+                        <p>Run the viewer with <code>--supabase</code> flag to enable dashboard features.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            dashboardContent.innerHTML = '<div class="no-data"><h2>Loading dashboard...</h2></div>';
+
+            try {
+                const response = await fetch('/api/dashboard/stats');
+                const stats = await response.json();
+
+                if (stats.error) {
+                    dashboardContent.innerHTML = `
+                        <div class="no-data">
+                            <h2>Error loading dashboard</h2>
+                            <p>${stats.error}</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                renderDashboard(stats);
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                dashboardContent.innerHTML = `
+                    <div class="no-data">
+                        <h2>Error loading dashboard</h2>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderDashboard(stats) {
+            const overview = stats.overview;
+            const byCategory = stats.by_category;
+            const byCurator = stats.by_curator;
+            const recentActivity = stats.recent_activity;
+
+            // Build stat cards
+            const statCardsHtml = `
+                <div class="dashboard-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">${overview.total_products}</div>
+                        <div class="stat-label">Total Products</div>
+                    </div>
+                    <div class="stat-card success">
+                        <div class="stat-value">${overview.curated_products}</div>
+                        <div class="stat-label">Curated Complete</div>
+                    </div>
+                    <div class="stat-card warning">
+                        <div class="stat-value">${overview.pending_products}</div>
+                        <div class="stat-label">Pending Curation</div>
+                    </div>
+                    <div class="stat-card info">
+                        <div class="stat-value">${overview.percent_complete}%</div>
+                        <div class="stat-label">Progress</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">${overview.total_curated_tags}</div>
+                        <div class="stat-label">Tags Added by Curators</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${overview.total_rejected_tags}</div>
+                        <div class="stat-label">Inferred Tags Rejected</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${Object.keys(byCategory).length}</div>
+                        <div class="stat-label">Categories</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${Object.keys(byCurator).length}</div>
+                        <div class="stat-label">Active Curators</div>
+                    </div>
+                </div>
+            `;
+
+            // Build recent activity
+            let activityHtml = '';
+            if (recentActivity.length > 0) {
+                const activityItems = recentActivity.map(item => {
+                    const colorInfo = curatorColors[item.curator] || { bg: '#999' };
+                    const date = new Date(item.created_at).toLocaleDateString();
+                    return `
+                        <div class="activity-item">
+                            <span class="activity-product">${item.product_id}</span>
+                            <span class="activity-curator" style="background: ${colorInfo.bg};">${item.curator}</span>
+                            <span class="activity-time">${date}</span>
+                        </div>
+                    `;
+                }).join('');
+
+                activityHtml = `
+                    <div class="activity-list">
+                        <h3 class="chart-title">Recent Curation Activity</h3>
+                        ${activityItems}
+                    </div>
+                `;
+            }
+
+            // Render HTML
+            document.getElementById('dashboardContent').innerHTML = `
+                ${statCardsHtml}
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="chart-container">
+                        <h3 class="chart-title">Curation Progress by Category</h3>
+                        <div id="categoryChart"></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3 class="chart-title">Curator Activity</h3>
+                        <div id="curatorChart"></div>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3 class="chart-title">Overall Progress</h3>
+                    <div id="progressChart"></div>
+                </div>
+
+                ${activityHtml}
+            `;
+
+            // Render Plotly charts
+            renderCategoryChart(byCategory);
+            renderCuratorChart(byCurator);
+            renderProgressChart(overview);
+        }
+
+        function renderCategoryChart(byCategory) {
+            const categories = Object.keys(byCategory);
+            const curated = categories.map(c => byCategory[c].curated);
+            const pending = categories.map(c => byCategory[c].pending);
+
+            const data = [
+                {
+                    x: categories,
+                    y: curated,
+                    name: 'Curated',
+                    type: 'bar',
+                    marker: { color: '#4CAF50' }
+                },
+                {
+                    x: categories,
+                    y: pending,
+                    name: 'Pending',
+                    type: 'bar',
+                    marker: { color: '#ff9800' }
+                }
+            ];
+
+            const layout = {
+                barmode: 'stack',
+                margin: { t: 20, r: 20, b: 60, l: 40 },
+                legend: { orientation: 'h', y: -0.2 },
+                xaxis: { tickangle: -45 }
+            };
+
+            Plotly.newPlot('categoryChart', data, layout, { responsive: true });
+        }
+
+        function renderCuratorChart(byCurator) {
+            const curators = Object.keys(byCurator);
+
+            if (curators.length === 0) {
+                document.getElementById('curatorChart').innerHTML = '<p style="color:#999;text-align:center;padding:40px;">No curator activity yet</p>';
+                return;
+            }
+
+            const data = [
+                {
+                    x: curators,
+                    y: curators.map(c => byCurator[c].completed),
+                    name: 'Products Completed',
+                    type: 'bar',
+                    marker: { color: '#4CAF50' }
+                },
+                {
+                    x: curators,
+                    y: curators.map(c => byCurator[c].tags_added),
+                    name: 'Tags Added',
+                    type: 'bar',
+                    marker: { color: '#2196F3' }
+                },
+                {
+                    x: curators,
+                    y: curators.map(c => byCurator[c].tags_rejected),
+                    name: 'Tags Rejected',
+                    type: 'bar',
+                    marker: { color: '#f44336' }
+                }
+            ];
+
+            const layout = {
+                barmode: 'group',
+                margin: { t: 20, r: 20, b: 40, l: 40 },
+                legend: { orientation: 'h', y: -0.15 }
+            };
+
+            Plotly.newPlot('curatorChart', data, layout, { responsive: true });
+        }
+
+        function renderProgressChart(overview) {
+            const data = [{
+                values: [overview.curated_products, overview.pending_products],
+                labels: ['Curated', 'Pending'],
+                type: 'pie',
+                hole: 0.6,
+                marker: {
+                    colors: ['#4CAF50', '#ff9800']
+                },
+                textinfo: 'label+percent',
+                textposition: 'outside'
+            }];
+
+            const layout = {
+                margin: { t: 20, r: 20, b: 20, l: 20 },
+                showlegend: false,
+                annotations: [{
+                    text: `${overview.percent_complete}%`,
+                    showarrow: false,
+                    font: { size: 32, weight: 'bold' }
+                }]
+            };
+
+            Plotly.newPlot('progressChart', data, layout, { responsive: true });
+        }
+
+        // ============================================
+        // MARK AS COMPLETE FUNCTIONALITY
+        // ============================================
+
+        async function markProductComplete() {
+            if (!curateMode || !currentCurator) {
+                alert('Please enter curate mode first.');
+                return;
+            }
+
+            const product = products[currentIndex];
+            const notes = prompt('Optional notes about this curation:', '');
+
+            if (notes === null) return; // User cancelled
+
+            try {
+                const response = await fetch('/api/curation_status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: product.product_id,
+                        curator: currentCurator,
+                        notes: notes || null
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    console.log(`✓ Marked product ${product.product_id} as complete`);
+                    await displayProduct(currentIndex);
+                    showCurateInputs();
+                } else {
+                    alert('Failed to mark as complete: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error marking complete:', error);
+                alert('Error marking product as complete');
+            }
+        }
+
+        async function unmarkProductComplete() {
+            if (!curateMode || !currentCurator) {
+                alert('Please enter curate mode first.');
+                return;
+            }
+
+            const product = products[currentIndex];
+
+            if (!confirm('Remove completion status from this product?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/curation_status', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: product.product_id
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    console.log(`✓ Unmarked product ${product.product_id}`);
+                    await displayProduct(currentIndex);
+                    showCurateInputs();
+                } else {
+                    alert('Failed to unmark: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error unmarking:', error);
+                alert('Error removing completion status');
+            }
+        }
     </script>
 </body>
 </html>
@@ -742,6 +1885,373 @@ def api_products():
     """API endpoint to get all products."""
     products = get_all_products()
     return jsonify(products)
+
+
+@app.route("/api/curated", methods=["POST"])
+def save_curated_metadata():
+    """Save a curated metadata entry to the database."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    from flask import request
+
+    data = request.get_json()
+    product_id = data.get("product_id")
+    field_name = data.get("field_name")
+    field_value = data.get("field_value")
+    curator = data.get("curator")
+
+    if not all([product_id, field_name, field_value, curator]):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        result = (
+            supabase_client.table("curated_metadata")
+            .insert(
+                {
+                    "product_id": product_id,
+                    "field_name": field_name,
+                    "field_value": field_value,
+                    "curator": curator,
+                }
+            )
+            .execute()
+        )
+        return jsonify({"success": True, "data": result.data})
+    except Exception as e:
+        # Handle duplicate entries gracefully
+        if "duplicate" in str(e).lower():
+            return jsonify({"success": True, "message": "Already exists"})
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/curated/<product_id>")
+def get_curated_metadata(product_id):
+    """Get all curated metadata for a product."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify([])
+
+    try:
+        result = (
+            supabase_client.table("curated_metadata")
+            .select("*")
+            .eq("product_id", product_id)
+            .execute()
+        )
+        return jsonify(result.data or [])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/curated", methods=["DELETE"])
+def delete_curated_metadata():
+    """Delete a curated metadata entry from the database."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json()
+    product_id = data.get("product_id")
+    field_name = data.get("field_name")
+    field_value = data.get("field_value")
+    curator = data.get("curator")
+
+    if not all([product_id, field_name, field_value, curator]):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        result = (
+            supabase_client.table("curated_metadata")
+            .delete()
+            .eq("product_id", product_id)
+            .eq("field_name", field_name)
+            .eq("field_value", field_value)
+            .eq("curator", curator)
+            .execute()
+        )
+        return jsonify({"success": True, "data": result.data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/rejected_tags", methods=["POST"])
+def reject_inferred_tag():
+    """Mark an inferred tag as rejected (incorrect). Saved for ML training."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json()
+    product_id = data.get("product_id")
+    field_name = data.get("field_name")
+    field_value = data.get("field_value")
+    original_reasoning = data.get("original_reasoning")
+    curator = data.get("curator")
+    rejection_reason = data.get("rejection_reason")
+
+    if not all([product_id, field_name, field_value, curator]):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        result = (
+            supabase_client.table("rejected_inferred_tags")
+            .insert(
+                {
+                    "product_id": product_id,
+                    "field_name": field_name,
+                    "field_value": field_value,
+                    "original_reasoning": original_reasoning,
+                    "curator": curator,
+                    "rejection_reason": rejection_reason,
+                }
+            )
+            .execute()
+        )
+        return jsonify({"success": True, "data": result.data})
+    except Exception as e:
+        # Handle duplicate entries gracefully
+        if "duplicate" in str(e).lower():
+            return jsonify({"success": True, "message": "Already rejected"})
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/rejected_tags/<product_id>")
+def get_rejected_tags(product_id):
+    """Get all rejected inferred tags for a product."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify([])
+
+    try:
+        result = (
+            supabase_client.table("rejected_inferred_tags")
+            .select("*")
+            .eq("product_id", product_id)
+            .execute()
+        )
+        return jsonify(result.data or [])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/rejected_tags", methods=["DELETE"])
+def unreject_inferred_tag():
+    """Remove a tag from the rejected list (undo rejection)."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json()
+    product_id = data.get("product_id")
+    field_name = data.get("field_name")
+    field_value = data.get("field_value")
+
+    if not all([product_id, field_name, field_value]):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        result = (
+            supabase_client.table("rejected_inferred_tags")
+            .delete()
+            .eq("product_id", product_id)
+            .eq("field_name", field_name)
+            .eq("field_value", field_value)
+            .execute()
+        )
+        return jsonify({"success": True, "data": result.data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# CURATION STATUS ENDPOINTS
+# ============================================
+
+
+@app.route("/api/curation_status/<product_id>")
+def get_curation_status(product_id):
+    """Get curation status for a product."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify(None)
+
+    try:
+        result = (
+            supabase_client.table("curation_status")
+            .select("*")
+            .eq("product_id", product_id)
+            .execute()
+        )
+        if result.data and len(result.data) > 0:
+            return jsonify(result.data[0])
+        return jsonify(None)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/curation_status", methods=["POST"])
+def mark_product_curated():
+    """Mark a product as fully curated/complete."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json()
+    product_id = data.get("product_id")
+    curator = data.get("curator")
+    notes = data.get("notes")
+
+    if not all([product_id, curator]):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        # Upsert - insert or update if exists
+        result = (
+            supabase_client.table("curation_status")
+            .upsert(
+                {
+                    "product_id": product_id,
+                    "curator": curator,
+                    "status": "complete",
+                    "notes": notes,
+                    "updated_at": "now()",
+                },
+                on_conflict="product_id",
+            )
+            .execute()
+        )
+        return jsonify({"success": True, "data": result.data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/curation_status", methods=["DELETE"])
+def unmark_product_curated():
+    """Remove curation status from a product (mark as incomplete)."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json()
+    product_id = data.get("product_id")
+
+    if not product_id:
+        return jsonify({"error": "Missing product_id"}), 400
+
+    try:
+        result = (
+            supabase_client.table("curation_status")
+            .delete()
+            .eq("product_id", product_id)
+            .execute()
+        )
+        return jsonify({"success": True, "data": result.data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# DASHBOARD STATISTICS ENDPOINTS
+# ============================================
+
+
+@app.route("/api/dashboard/stats")
+def get_dashboard_stats():
+    """Get comprehensive dashboard statistics."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    try:
+        # Get all products
+        products_result = supabase_client.table("products").select("*").execute()
+        products = products_result.data or []
+
+        # Get curation statuses
+        curation_result = supabase_client.table("curation_status").select("*").execute()
+        curated_ids = {c["product_id"] for c in (curation_result.data or [])}
+
+        # Get curated metadata counts
+        curated_meta_result = (
+            supabase_client.table("curated_metadata").select("*").execute()
+        )
+        curated_metadata = curated_meta_result.data or []
+
+        # Get rejected tags counts
+        rejected_result = (
+            supabase_client.table("rejected_inferred_tags").select("*").execute()
+        )
+        rejected_tags = rejected_result.data or []
+
+        # Calculate statistics
+        total_products = len(products)
+        curated_products = len(curated_ids)
+        pending_products = total_products - curated_products
+
+        # Category breakdown
+        category_stats = {}
+        for p in products:
+            cat = p.get("category", "Unknown")
+            if cat not in category_stats:
+                category_stats[cat] = {"total": 0, "curated": 0, "pending": 0}
+            category_stats[cat]["total"] += 1
+            if p["product_id"] in curated_ids:
+                category_stats[cat]["curated"] += 1
+            else:
+                category_stats[cat]["pending"] += 1
+
+        # Curator activity
+        curator_stats = {}
+        for c in curation_result.data or []:
+            curator = c.get("curator", "Unknown")
+            if curator not in curator_stats:
+                curator_stats[curator] = {
+                    "completed": 0,
+                    "tags_added": 0,
+                    "tags_rejected": 0,
+                }
+            curator_stats[curator]["completed"] += 1
+
+        for cm in curated_metadata:
+            curator = cm.get("curator", "Unknown")
+            if curator not in curator_stats:
+                curator_stats[curator] = {
+                    "completed": 0,
+                    "tags_added": 0,
+                    "tags_rejected": 0,
+                }
+            curator_stats[curator]["tags_added"] += 1
+
+        for rt in rejected_tags:
+            curator = rt.get("curator", "Unknown")
+            if curator not in curator_stats:
+                curator_stats[curator] = {
+                    "completed": 0,
+                    "tags_added": 0,
+                    "tags_rejected": 0,
+                }
+            curator_stats[curator]["tags_rejected"] += 1
+
+        # Recent activity (last 10 curated products)
+        recent_curation = sorted(
+            curation_result.data or [],
+            key=lambda x: x.get("created_at", ""),
+            reverse=True,
+        )[:10]
+
+        return jsonify(
+            {
+                "overview": {
+                    "total_products": total_products,
+                    "curated_products": curated_products,
+                    "pending_products": pending_products,
+                    "percent_complete": (
+                        round(curated_products / total_products * 100, 1)
+                        if total_products > 0
+                        else 0
+                    ),
+                    "total_curated_tags": len(curated_metadata),
+                    "total_rejected_tags": len(rejected_tags),
+                },
+                "by_category": category_stats,
+                "by_curator": curator_stats,
+                "recent_activity": recent_curation,
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/images/<category>/<product_id>/<filename>")

@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS products (
     materials TEXT[] DEFAULT '{}',
     fit TEXT,
 
+    -- Inferred product attributes
+    weight JSONB,           -- Weight info: {"value": "light/medium/heavy", "reasoning": [...]}
+    style_tags JSONB,       -- Style tags: [{"tag": "minimal", "reasoning": "..."}, ...]
+    formality JSONB,        -- Formality: {"score": 1-5, "label": "...", "reasoning": [...]}
+
     -- Image storage paths (in Supabase Storage)
     image_paths TEXT[] DEFAULT '{}',
     image_count INTEGER DEFAULT 0,
@@ -38,6 +43,14 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
 CREATE INDEX IF NOT EXISTS idx_products_scraped_at ON products(scraped_at);
 CREATE INDEX IF NOT EXISTS idx_products_price ON products(price_current);
+
+-- ============================================
+-- MIGRATION: Add missing columns to existing table
+-- Run this if you already have a products table
+-- ============================================
+ALTER TABLE products ADD COLUMN IF NOT EXISTS weight JSONB;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS style_tags JSONB;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS formality JSONB;
 
 -- Enable Row Level Security (RLS) - optional but recommended
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
@@ -86,3 +99,144 @@ SELECT
 FROM products
 GROUP BY category
 ORDER BY product_count DESC;
+
+-- ============================================
+-- CURATED METADATA TABLE
+-- ============================================
+-- Stores user-curated additions to product metadata
+-- Original metadata is never modified; curated data is stored separately
+
+CREATE TABLE IF NOT EXISTS curated_metadata (
+    id SERIAL PRIMARY KEY,
+    product_id TEXT NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    field_name TEXT NOT NULL,  -- 'style_tag', 'fit', 'weight'
+    field_value TEXT NOT NULL,  -- The curated value
+    curator TEXT NOT NULL,  -- 'Reed', 'Gigi', 'Kiki'
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Prevent duplicate entries for same product/field/value/curator
+    UNIQUE(product_id, field_name, field_value, curator)
+);
+
+-- Index for fast lookups by product
+CREATE INDEX IF NOT EXISTS idx_curated_product_id ON curated_metadata(product_id);
+CREATE INDEX IF NOT EXISTS idx_curated_curator ON curated_metadata(curator);
+
+-- Enable RLS with full access policy
+ALTER TABLE curated_metadata ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all access to curated_metadata" ON curated_metadata
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+
+-- ============================================
+-- REJECTED INFERRED TAGS TABLE
+-- ============================================
+-- Stores inferred tags that curators have marked as incorrect.
+-- This data is preserved for ML model training to learn from mistakes.
+-- The original inferred tags remain in the products table but are
+-- displayed with strikethrough styling in the UI.
+
+CREATE TABLE IF NOT EXISTS rejected_inferred_tags (
+    id SERIAL PRIMARY KEY,
+    product_id TEXT NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    field_name TEXT NOT NULL,  -- 'style_tag', 'fit', 'weight', 'formality'
+    field_value TEXT NOT NULL,  -- The rejected tag value
+    original_reasoning TEXT,  -- The ML model's original reasoning for inference
+    curator TEXT NOT NULL,  -- Who marked it as incorrect
+    rejection_reason TEXT,  -- Optional: why the curator thinks it's wrong
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Prevent duplicate rejections for same product/field/value
+    UNIQUE(product_id, field_name, field_value)
+);
+
+-- Indexes for ML training queries
+CREATE INDEX IF NOT EXISTS idx_rejected_product_id ON rejected_inferred_tags(product_id);
+CREATE INDEX IF NOT EXISTS idx_rejected_field_name ON rejected_inferred_tags(field_name);
+CREATE INDEX IF NOT EXISTS idx_rejected_created_at ON rejected_inferred_tags(created_at);
+
+-- Enable RLS with full access policy
+ALTER TABLE rejected_inferred_tags ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all access to rejected_inferred_tags" ON rejected_inferred_tags
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+
+-- ============================================
+-- VIEW: ML Training Data for Rejected Tags
+-- ============================================
+-- Useful view for extracting training data to improve ML model
+
+CREATE OR REPLACE VIEW ml_rejected_tags_training AS
+SELECT
+    r.product_id,
+    r.field_name,
+    r.field_value,
+    r.original_reasoning,
+    r.curator,
+    r.rejection_reason,
+    r.created_at,
+    p.name as product_name,
+    p.category,
+    p.description
+FROM rejected_inferred_tags r
+JOIN products p ON r.product_id = p.product_id
+ORDER BY r.created_at DESC;
+
+-- ============================================
+-- CURATION STATUS TABLE
+-- ============================================
+-- Tracks which products have been fully curated (reviewed and marked complete)
+
+CREATE TABLE IF NOT EXISTS curation_status (
+    id SERIAL PRIMARY KEY,
+    product_id TEXT NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    curator TEXT NOT NULL,  -- Who marked it as complete
+    status TEXT NOT NULL DEFAULT 'complete',  -- 'complete' = fully curated
+    notes TEXT,  -- Optional notes about the curation
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- One status per product
+    UNIQUE(product_id)
+);
+
+-- Indexes for fast lookups
+CREATE INDEX IF NOT EXISTS idx_curation_status_product ON curation_status(product_id);
+CREATE INDEX IF NOT EXISTS idx_curation_status_curator ON curation_status(curator);
+CREATE INDEX IF NOT EXISTS idx_curation_status_created ON curation_status(created_at);
+
+-- Enable RLS with full access policy
+ALTER TABLE curation_status ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all access to curation_status" ON curation_status
+    FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================
+-- VIEW: Curation Progress Summary
+-- ============================================
+-- Summary view for dashboard statistics
+
+CREATE OR REPLACE VIEW curation_summary AS
+SELECT
+    COUNT(*) as total_products,
+    COUNT(cs.product_id) as curated_products,
+    COUNT(*) - COUNT(cs.product_id) as pending_products,
+    ROUND(COUNT(cs.product_id)::numeric / NULLIF(COUNT(*)::numeric, 0) * 100, 1) as percent_complete
+FROM products p
+LEFT JOIN curation_status cs ON p.product_id = cs.product_id;
+
+-- ============================================
+-- VIEW: Category Summary with Curation Status
+-- ============================================
+CREATE OR REPLACE VIEW category_curation_summary AS
+SELECT
+    p.category,
+    COUNT(*) as total_products,
+    COUNT(cs.product_id) as curated_products,
+    COUNT(*) - COUNT(cs.product_id) as pending_products,
+    ROUND(COUNT(cs.product_id)::numeric / NULLIF(COUNT(*)::numeric, 0) * 100, 1) as percent_complete
+FROM products p
+LEFT JOIN curation_status cs ON p.product_id = cs.product_id
+GROUP BY p.category
+ORDER BY total_products DESC;

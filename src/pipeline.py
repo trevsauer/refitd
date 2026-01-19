@@ -216,6 +216,19 @@ class ZaraPipeline:
             console.print("[cyan]Saving to Supabase...[/cyan]")
             for product, raw in zip(products, raw_products):
                 try:
+                    # Convert Pydantic models to dicts for JSON storage
+                    weight_dict = (
+                        product.weight.model_dump() if product.weight else None
+                    )
+                    style_tags_list = (
+                        [tag.model_dump() for tag in product.style_tags]
+                        if product.style_tags
+                        else None
+                    )
+                    formality_dict = (
+                        product.formality.model_dump() if product.formality else None
+                    )
+
                     await self.supabase_loader.save_product(
                         product_id=product.product_id,
                         name=product.name,
@@ -229,6 +242,9 @@ class ZaraPipeline:
                         sizes=product.sizes,
                         materials=product.materials,
                         fit=product.fit,
+                        weight=weight_dict,
+                        style_tags=style_tags_list,
+                        formality=formality_dict,
                         image_urls=raw.image_urls,
                     )
                 except Exception as e:
