@@ -1339,6 +1339,17 @@ HTML_TEMPLATE = """
                         <div id="curationButtonArea" style="margin-top: 15px;"></div>
                     </div>
 
+                    <div class="danger-zone" style="margin-top: 30px; padding: 15px; border: 1px solid #ffcdd2; border-radius: 8px; background: #fff5f5;">
+                        <h3 class="section-title" style="color: #c62828; margin-top: 0;">⚠️ Danger Zone</h3>
+                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Permanently delete this product from the database.</p>
+                        <button onclick="deleteProduct('${product.product_id}')"
+                                style="background: #f44336; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;"
+                                onmouseover="this.style.background='#d32f2f'"
+                                onmouseout="this.style.background='#f44336'">
+                            🗑️ Delete Product
+                        </button>
+                    </div>
+
                     <p class="scraped-time">Scraped: ${new Date(product.scraped_at).toLocaleString()}</p>
                 </div>
             `;
@@ -1359,6 +1370,56 @@ HTML_TEMPLATE = """
             const newIndex = currentIndex + direction;
             if (newIndex >= 0 && newIndex < products.length) {
                 displayProduct(newIndex);
+            }
+        }
+
+        async function deleteProduct(productId) {
+            // Show confirmation dialog
+            const productName = products[currentIndex]?.name || productId;
+            const confirmed = confirm(`Are you sure you want to delete this product?\n\n"${productName}"\n(ID: ${productId})\n\nThis action cannot be undone.`);
+
+            if (!confirmed) return;
+
+            try {
+                const response = await fetch(`/api/products/${productId}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    // Remove from local products array
+                    const deletedIndex = products.findIndex(p => p.product_id === productId);
+                    if (deletedIndex !== -1) {
+                        products.splice(deletedIndex, 1);
+                    }
+
+                    // Show success message
+                    alert(`✓ Product deleted successfully!\n\nImages deleted: ${result.images_deleted || 0}`);
+
+                    // Navigate to next product or reload
+                    if (products.length === 0) {
+                        document.getElementById('productCard').innerHTML = `
+                            <div class="no-data">
+                                <h2>No products remaining</h2>
+                                <p>All products have been deleted. Run the scraper to add more.</p>
+                            </div>
+                        `;
+                        document.getElementById('counter').textContent = 'No products';
+                    } else {
+                        // Adjust current index if needed
+                        if (currentIndex >= products.length) {
+                            currentIndex = products.length - 1;
+                        }
+                        displayProduct(currentIndex);
+                    }
+                } else {
+                    alert(`❌ Failed to delete product:\n${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Error deleting product:', error);
+                alert(`❌ Error deleting product:\n${error.message}`);
             }
         }
 
@@ -2494,6 +2555,70 @@ def api_products():
     """API endpoint to get all products."""
     products = get_all_products()
     return jsonify(products)
+
+
+@app.route("/api/products/<product_id>", methods=["DELETE"])
+def delete_product(product_id):
+    """Delete a product from the database and storage."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured. Deletion only works with Supabase."}), 400
+
+    try:
+        # First, get the product to find its image paths
+        product_result = supabase_client.table("products").select("image_paths, name").eq("product_id", product_id).execute()
+
+        if not product_result.data:
+            return jsonify({"error": "Product not found"}), 404
+
+        product = product_result.data[0]
+        image_paths = product.get("image_paths", [])
+        images_deleted = 0
+
+        # Delete images from storage
+        if image_paths:
+            try:
+                supabase_client.storage.from_(BUCKET_NAME).remove(image_paths)
+                images_deleted = len(image_paths)
+            except Exception as e:
+                print(f"Warning: Could not delete some images: {e}")
+
+        # Delete from curated_metadata table (if exists)
+        try:
+            supabase_client.table("curated_metadata").delete().eq("product_id", product_id).execute()
+        except Exception:
+            pass  # Table may not exist
+
+        # Delete from curation_status table (if exists)
+        try:
+            supabase_client.table("curation_status").delete().eq("product_id", product_id).execute()
+        except Exception:
+            pass  # Table may not exist
+
+        # Delete from rejected_tags table (if exists)
+        try:
+            supabase_client.table("rejected_tags").delete().eq("product_id", product_id).execute()
+        except Exception:
+            pass  # Table may not exist
+
+        # Delete the product itself
+        supabase_client.table("products").delete().eq("product_id", product_id).execute()
+
+        # Also remove from local tracking database
+        try:
+            from src.tracking import ProductTracker
+            tracker = ProductTracker()
+            tracker.remove_product(product_id)
+        except Exception as e:
+            print(f"Warning: Could not remove from tracking DB: {e}")
+
+        return jsonify({
+            "success": True,
+            "message": f"Product {product_id} deleted successfully",
+            "images_deleted": images_deleted
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/curated", methods=["POST"])

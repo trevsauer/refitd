@@ -248,6 +248,25 @@ class ProductTracker:
             conn.commit()
             return deleted
 
+    def remove_product(self, product_id: str) -> bool:
+        """
+        Remove a single product from the tracking database.
+
+        Args:
+            product_id: The product ID to remove
+
+        Returns:
+            True if the product was removed, False if not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM scraped_products WHERE product_id = ?", (product_id,)
+            )
+            deleted = cursor.rowcount > 0
+            conn.commit()
+            return deleted
+
     def print_stats(self) -> None:
         """Print tracking statistics to console."""
         stats = self.get_stats()
