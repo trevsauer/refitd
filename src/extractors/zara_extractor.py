@@ -237,10 +237,10 @@ class ZaraExtractor:
 
         # Extract product ID from URL first
         product_id = self._extract_product_id(url)
-        
+
         # Try to get data from ITXRest API first (more reliable)
         api_data = await self._get_product_from_api(product_id)
-        
+
         page = await self._create_stealth_page()
 
         try:
@@ -348,33 +348,33 @@ class ZaraExtractor:
     async def _get_product_from_api(self, product_id: str) -> Optional[dict]:
         """
         Get product data from Zara's ITXRest API.
-        
+
         Returns dict with: name, price, original_price, description, colors, images
         """
         try:
             import httpx
-            
+
             api_url = f"https://www.zara.com/itxrest/2/catalog/store/11719/product/{product_id}"
-            
+
             headers = {
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept": "application/json, text/plain, */*",
                 "Accept-Language": "en-US,en;q=0.9",
                 "Referer": "https://www.zara.com/us/en/",
             }
-            
+
             async with httpx.AsyncClient(follow_redirects=True) as client:
                 response = await client.get(api_url, headers=headers, timeout=10)
-                
+
                 if response.status_code != 200:
                     return None
-                
+
                 data = response.json()
                 result = {}
-                
+
                 # Extract name
                 result["name"] = data.get("name", "")
-                
+
                 # Extract description
                 if "detail" in data:
                     desc_parts = []
@@ -382,27 +382,34 @@ class ZaraExtractor:
                         if data["detail"].get(key):
                             desc_parts.append(data["detail"][key])
                     result["description"] = " ".join(desc_parts) if desc_parts else None
-                
+
                 # Extract colors and images from first color variant
                 if "detail" in data and "colors" in data["detail"]:
                     colors_data = data["detail"]["colors"]
                     if colors_data:
                         # Get color names
                         result["colors"] = [c.get("name", "") for c in colors_data if c.get("name")]
-                        
+
                         # Get images from first color
                         first_color = colors_data[0]
                         if "xmedia" in first_color:
                             images = []
                             for media in first_color["xmedia"]:
-                                if media.get("path") and media.get("name"):
-                                    # Build the image URL
-                                    img_url = f"https://static.zara.net/photos/{media['path']}/{media['name']}"
-                                    # Get a reasonable size
-                                    img_url = img_url.replace(".jpg", ".jpg?ts=1&w=850")
+                                # Use the deliveryUrl from extraInfo if available
+                                if "extraInfo" in media and media["extraInfo"].get("deliveryUrl"):
+                                    img_url = media["extraInfo"]["deliveryUrl"]
+                                    # Add width parameter for reasonable size
+                                    if "?" in img_url:
+                                        img_url += "&w=850"
+                                    else:
+                                        img_url += "?w=850"
+                                    images.append(img_url)
+                                elif media.get("path") and media.get("name"):
+                                    # Fallback: Build the image URL from path/name
+                                    img_url = f"https://static.zara.net/photos/{media['path']}/{media['name']}.jpg?w=850"
                                     images.append(img_url)
                             result["images"] = images[:5]  # Limit to 5 images
-                        
+
                         # Get price from first color's first size
                         if "sizes" in first_color and first_color["sizes"]:
                             first_size = first_color["sizes"][0]
@@ -411,14 +418,14 @@ class ZaraExtractor:
                                 result["price"] = first_size["price"] / 100
                             if "oldPrice" in first_size:
                                 result["original_price"] = first_size["oldPrice"] / 100
-                
+
                 if result.get("name"):
                     console.print(f"[dim]Got product data from API: {result.get('name')}[/dim]")
                     return result
-                    
+
         except Exception as e:
             console.print(f"[dim]API lookup failed: {e}[/dim]")
-        
+
         return None
 
     def _extract_name_from_url(self, url: str) -> Optional[str]:
