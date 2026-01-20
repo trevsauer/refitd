@@ -34,16 +34,16 @@ async def count_category_products(page, url: str) -> int:
     """Count all products in a category by scrolling to bottom."""
     await page.goto(url, wait_until="networkidle", timeout=30000)
     await asyncio.sleep(2)
-    
+
     previous_count = 0
     same_count_times = 0
-    
+
     # Scroll until no more products load
     while same_count_times < 3:
         # Scroll to bottom
         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
         await asyncio.sleep(1)
-        
+
         # Count products
         count = await page.evaluate(r"""
             () => {
@@ -55,22 +55,22 @@ async def count_category_products(page, url: str) -> int:
                 return products.size;
             }
         """)
-        
+
         if count == previous_count:
             same_count_times += 1
         else:
             same_count_times = 0
             previous_count = count
-    
+
     return previous_count
 
 
 async def analyze_categories():
     """Analyze all categories."""
     console.print(Panel("Zara Men's Categories - Product Count", style="bold blue"))
-    
+
     results = []
-    
+
     async with async_playwright() as p:
         browser = await p.firefox.launch(headless=False)
         context = await browser.new_context(
@@ -79,7 +79,7 @@ async def analyze_categories():
         )
         page = await context.new_page()
         await stealth_async(page)
-        
+
         # Accept cookies
         console.print("[dim]Loading initial page...[/dim]")
         await page.goto("https://www.zara.com/us/en/", timeout=30000)
@@ -88,7 +88,7 @@ async def analyze_categories():
             await page.click("#onetrust-accept-btn-handler", timeout=3000)
         except:
             pass
-        
+
         for cat in CATEGORIES:
             console.print(f"  {cat['name']}...", end=" ")
             try:
@@ -98,26 +98,26 @@ async def analyze_categories():
             except Exception as e:
                 results.append({"name": cat["name"], "slug": cat["slug"], "url": cat["url"], "count": 0})
                 console.print(f"[red]Error[/red]")
-        
+
         await browser.close()
-    
+
     # Results table
     console.print("\n")
     table = Table(title="Category Analysis", show_lines=True)
     table.add_column("Category", style="cyan")
     table.add_column("Slug", style="yellow")
     table.add_column("Products", justify="right", style="green")
-    
+
     results.sort(key=lambda x: x["count"], reverse=True)
     total = 0
     for r in results:
         if r["count"] > 0:
             table.add_row(r["name"], r["slug"], str(r["count"]))
             total += r["count"]
-    
+
     console.print(table)
     console.print(f"\n[bold]Total: {total}[/bold] (some overlap)")
-    
+
     # Config
     console.print("\n[cyan]settings.py config:[/cyan]")
     for r in sorted(results, key=lambda x: x["name"]):
