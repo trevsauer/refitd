@@ -1818,7 +1818,13 @@ HTML_TEMPLATE = """
                     <p style="color: #666; margin-bottom: 15px;">Scrape new products from Zara. Already-scraped products will be skipped automatically.</p>
 
                     <div class="scraper-controls">
-                        <label>Categories:</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label style="margin: 0;">Categories:</label>
+                            <div style="display: flex; gap: 8px;">
+                                <button type="button" onclick="selectAllCategories()" style="padding: 4px 8px; font-size: 11px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 4px;">Select All</button>
+                                <button type="button" onclick="deselectAllCategories()" style="padding: 4px 8px; font-size: 11px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 4px;">Deselect All</button>
+                            </div>
+                        </div>
                         <select id="scraperCategories" multiple style="height: 150px;">
                             <optgroup label="Clothing">
                                 <option value="tshirts" selected>T-Shirts</option>
@@ -1841,8 +1847,21 @@ HTML_TEMPLATE = """
                             </optgroup>
                         </select>
 
-                        <label>Products per category:</label>
-                        <input type="number" id="scraperProductCount" value="2" min="1" max="20" style="width: 60px;">
+                        <div style="margin-top: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0;">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 0; font-weight: 500;">
+                                    <input type="checkbox" id="scrapeAllProducts" onchange="toggleAllProducts()" style="width: 18px; height: 18px; cursor: pointer;">
+                                    <span>Scrape ALL products per category</span>
+                                </label>
+                            </div>
+                            <div id="productCountContainer" style="display: flex; align-items: center; gap: 10px;">
+                                <label style="margin: 0; color: #666;">Products per category:</label>
+                                <input type="number" id="scraperProductCount" value="2" min="1" max="100" style="width: 70px; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                            </div>
+                            <p id="allProductsNote" style="display: none; margin: 8px 0 0 0; font-size: 12px; color: #4CAF50;">
+                                ✓ Will scrape all available products (this may take a while)
+                            </p>
+                        </div>
                     </div>
 
                     <button class="go-btn" id="scraperGoBtn" onclick="startScraper()">🚀 GO</button>
@@ -1965,14 +1984,51 @@ HTML_TEMPLATE = """
 
         let scraperPollingInterval = null;
 
+        // Select all categories
+        function selectAllCategories() {
+            const select = document.getElementById('scraperCategories');
+            for (let option of select.options) {
+                option.selected = true;
+            }
+        }
+
+        // Deselect all categories
+        function deselectAllCategories() {
+            const select = document.getElementById('scraperCategories');
+            for (let option of select.options) {
+                option.selected = false;
+            }
+        }
+
+        // Toggle "all products" mode
+        function toggleAllProducts() {
+            const checkbox = document.getElementById('scrapeAllProducts');
+            const countContainer = document.getElementById('productCountContainer');
+            const allNote = document.getElementById('allProductsNote');
+            const countInput = document.getElementById('scraperProductCount');
+
+            if (checkbox.checked) {
+                countContainer.style.opacity = '0.5';
+                countInput.disabled = true;
+                allNote.style.display = 'block';
+            } else {
+                countContainer.style.opacity = '1';
+                countInput.disabled = false;
+                allNote.style.display = 'none';
+            }
+        }
+
         async function startScraper() {
             const categoriesSelect = document.getElementById('scraperCategories');
             const productCountInput = document.getElementById('scraperProductCount');
+            const scrapeAllCheckbox = document.getElementById('scrapeAllProducts');
             const goBtn = document.getElementById('scraperGoBtn');
 
             // Get selected categories
             const selectedCategories = Array.from(categoriesSelect.selectedOptions).map(opt => opt.value);
-            const productsPerCategory = parseInt(productCountInput.value) || 2;
+
+            // If "scrape all" is checked, use a high number (9999), otherwise use the input value
+            const productsPerCategory = scrapeAllCheckbox.checked ? 9999 : (parseInt(productCountInput.value) || 2);
 
             if (selectedCategories.length === 0) {
                 alert('Please select at least one category');
