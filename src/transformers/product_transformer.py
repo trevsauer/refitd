@@ -49,6 +49,8 @@ class SizeInfo(BaseModel):
 
     size: str
     available: bool = True  # Whether the size is in stock
+    availability: Optional[str] = None  # in_stock, low_on_stock, out_of_stock
+    sku: Optional[int] = None  # SKU number
 
 
 class ProductMetadata(BaseModel):
@@ -697,6 +699,16 @@ class ProductTransformer:
                 fit=fit,
             )
 
+            # Process sizes - extract just the size strings if we have dicts
+            sizes_list = []
+            for size_item in raw_data.sizes:
+                if isinstance(size_item, dict):
+                    # New format: {"size": "M", "available": true, ...}
+                    sizes_list.append(size_item.get("size", str(size_item)))
+                else:
+                    # Old format: just a string
+                    sizes_list.append(str(size_item))
+
             # Create validated metadata
             metadata = ProductMetadata(
                 product_id=raw_data.product_id,
@@ -707,7 +719,7 @@ class ProductTransformer:
                 price=price,
                 description=raw_data.description,
                 colors=raw_data.colors,
-                sizes=raw_data.sizes,
+                sizes=sizes_list,
                 materials=raw_data.materials,
                 images=[],  # Will be filled with local filenames after download
                 fit=fit,

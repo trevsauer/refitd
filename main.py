@@ -94,6 +94,12 @@ def parse_args():
         help="Also save to local files (in addition to Supabase)",
     )
 
+    parser.add_argument(
+        "--wipe",
+        action="store_true",
+        help="⚠️  DANGER: Wipe ALL products from Supabase database and exit",
+    )
+
     return parser.parse_args()
 
 
@@ -159,6 +165,33 @@ def main():
         console.print("\n[bold cyan]Tracking Database Statistics[/bold cyan]")
         tracker.print_stats()
         return 0
+
+    # Handle --wipe flag: wipe all products and exit
+    if args.wipe:
+        console.print("\n[bold red]⚠️  WARNING: This will DELETE ALL products from Supabase![/bold red]")
+        console.print("[yellow]This will also clear the local tracking database.[/yellow]")
+        console.print("[yellow]This action cannot be undone.[/yellow]\n")
+
+        confirm = input("Type 'DELETE ALL' to confirm: ")
+        if confirm == "DELETE ALL":
+            try:
+                # Wipe Supabase
+                from src.loaders.supabase_loader import SupabaseLoader
+                loader = SupabaseLoader()
+                deleted_count = loader.wipe_all()
+                console.print(f"\n[green]✓ Wiped {deleted_count} products from Supabase[/green]")
+
+                # Also clear the tracking database
+                tracking_deleted = tracker.clear()
+                console.print(f"[green]✓ Cleared {tracking_deleted} records from tracking database[/green]")
+
+                return 0
+            except Exception as e:
+                console.print(f"\n[red]Error wiping database: {e}[/red]")
+                return 1
+        else:
+            console.print("[yellow]Wipe cancelled[/yellow]")
+            return 0
 
     # Handle --clear-tracking flag: clear database before running
     if args.clear_tracking:

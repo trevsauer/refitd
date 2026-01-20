@@ -427,99 +427,68 @@ class ZaraExtractor:
     async def _extract_sizes(self, page: Page) -> list[dict]:
         """Extract available sizes with availability status.
 
+        Uses Zara's ITXRest API for reliable size data.
+        Falls back to DOM extraction if API fails.
         Returns a list of dicts: [{"size": "M", "available": true}, ...]
         """
         try:
-            sizes = await page.evaluate(
-                """
-                () => {
-                    const sizes = [];
-                    const seenSizes = new Set();
+            import httpx
 
-                    // Try different selector strategies for Zara's size buttons
-                    const buttonSelectors = [
-                        '.size-selector__size-list button',
-                        '.product-size-selector__size-list button',
-                        '[class*="size-selector"] button',
-                        '[data-qa="size-selector"] button',
-                        '.product-detail-size-selector button',
-                        '[class*="SizeSelector"] button'
-                    ];
+            # Get the product ID from the current URL
+            url = page.url
+            product_id = self._extract_product_id(url)
 
-                    for (const sel of buttonSelectors) {
-                        const buttons = document.querySelectorAll(sel);
-                        for (const btn of buttons) {
-                            // Get the size text from span or button itself
-                            const span = btn.querySelector('span');
-                            const text = (span ? span.textContent : btn.textContent).trim();
+            if not product_id:
+                console.print("[yellow]Could not extract product ID for size lookup[/yellow]")
+                return []
 
-                            // Skip invalid entries
-                            if (!text || text.length > 10 || text === 'Add' || seenSizes.has(text)) {
-                                continue;
-                            }
+            # Query Zara's ITXRest API directly using httpx (not browser)
+            # This bypasses any browser-based bot detection
+            api_url = f"https://www.zara.com/itxrest/2/catalog/store/11719/product/{product_id}"
 
-                            // Check if size is available (not disabled/out of stock)
-                            // Zara uses various patterns to indicate unavailability
-                            const isDisabled = btn.disabled ||
-                                btn.hasAttribute('disabled') ||
-                                btn.classList.contains('is-disabled') ||
-                                btn.classList.contains('size-selector__size--disabled') ||
-                                btn.classList.contains('disabled') ||
-                                btn.classList.contains('out-of-stock') ||
-                                btn.getAttribute('aria-disabled') === 'true' ||
-                                btn.closest('[class*="disabled"]') !== null;
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.zara.com/us/en/",
+            }
 
-                            // Also check for visual indicators (strikethrough, grayed out)
-                            const style = window.getComputedStyle(btn);
-                            const hasStrikethrough = style.textDecoration.includes('line-through');
-                            const isGrayedOut = parseFloat(style.opacity) < 0.5;
+            async with httpx.AsyncClient(follow_redirects=True) as client:
+                response = await client.get(api_url, headers=headers, timeout=10)
 
-                            const available = !isDisabled && !hasStrikethrough && !isGrayedOut;
+                if response.status_code != 200:
+                    console.print(f"[yellow]Size API returned status {response.status_code}[/yellow]")
+                    return []
 
-                            sizes.push({
-                                size: text,
-                                available: available
-                            });
-                            seenSizes.add(text);
-                        }
-                        if (sizes.length > 0) break;
-                    }
+                data = response.json()
+                sizes = []
+                seen_sizes = set()
 
-                    // Fallback: try list items if buttons didn't work
-                    if (sizes.length === 0) {
-                        const liSelectors = [
-                            '.size-selector__size-list li',
-                            '.product-size-selector__size-list li'
-                        ];
+                # Extract sizes from the first color variant
+                if "detail" in data and "colors" in data["detail"]:
+                    colors = data["detail"]["colors"]
+                    if colors:
+                        first_color = colors[0]
+                        if "sizes" in first_color:
+                            for size in first_color["sizes"]:
+                                size_name = size.get("name", "")
+                                if size_name and size_name not in seen_sizes:
+                                    availability = size.get("availability", "unknown")
+                                    sizes.append({
+                                        "size": size_name,
+                                        "available": availability in ("in_stock", "low_on_stock"),
+                                        "availability": availability,
+                                        "sku": size.get("sku")
+                                    })
+                                    seen_sizes.add(size_name)
 
-                        for (const sel of liSelectors) {
-                            const items = document.querySelectorAll(sel);
-                            for (const li of items) {
-                                const text = li.textContent.trim();
-                                if (!text || text.length > 10 || text === 'Add' || seenSizes.has(text)) {
-                                    continue;
-                                }
+                if sizes:
+                    console.print(f"[dim]Found {len(sizes)} sizes via API: {[s['size'] for s in sizes]}[/dim]")
 
-                                const isDisabled = li.classList.contains('is-disabled') ||
-                                    li.classList.contains('disabled') ||
-                                    li.classList.contains('out-of-stock');
+                return sizes
 
-                                sizes.push({
-                                    size: text,
-                                    available: !isDisabled
-                                });
-                                seenSizes.add(text);
-                            }
-                            if (sizes.length > 0) break;
-                        }
-                    }
-
-                    return sizes;
-                }
-            """
-            )
-            return sizes
-        except:
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not extract sizes via API: {e}[/yellow]")
             return []
 
     async def _extract_materials(self, page: Page) -> list[str]:

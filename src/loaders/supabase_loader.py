@@ -363,3 +363,57 @@ class SupabaseLoader:
             "total_products": total,
             "by_category": by_category,
         }
+
+    def wipe_all(self) -> int:
+        """
+        Delete ALL products and their images from Supabase.
+
+        ⚠️  WARNING: This is destructive and cannot be undone!
+
+        Returns:
+            Number of products deleted
+        """
+        console.print("[yellow]Fetching all products...[/yellow]")
+
+        # Get all products to find their image paths
+        all_products = self.client.table("products").select("product_id, image_paths, name").execute()
+        products = all_products.data or []
+
+        if not products:
+            console.print("[dim]No products found in database[/dim]")
+            return 0
+
+        console.print(f"[yellow]Found {len(products)} products to delete[/yellow]")
+
+        # Collect all image paths
+        all_image_paths = []
+        for product in products:
+            image_paths = product.get("image_paths", [])
+            if image_paths:
+                all_image_paths.extend(image_paths)
+
+        # Delete images from storage (in batches to avoid timeout)
+        if all_image_paths:
+            console.print(f"[yellow]Deleting {len(all_image_paths)} images from storage...[/yellow]")
+            batch_size = 100
+            for i in range(0, len(all_image_paths), batch_size):
+                batch = all_image_paths[i:i + batch_size]
+                try:
+                    self.client.storage.from_(self.bucket_name).remove(batch)
+                    console.print(f"[dim]  Deleted batch {i // batch_size + 1}[/dim]")
+                except Exception as e:
+                    console.print(f"[yellow]  Warning: Failed to delete some images: {e}[/yellow]")
+
+        # Delete all products from database
+        console.print("[yellow]Deleting all product records from database...[/yellow]")
+
+        # Supabase doesn't allow DELETE without a filter, so we delete by matching all product_ids
+        # Or we can use a trick: delete where product_id is not null (matches all)
+        try:
+            self.client.table("products").delete().neq("product_id", "").execute()
+            console.print(f"[green]✓ Deleted {len(products)} products from database[/green]")
+        except Exception as e:
+            console.print(f"[red]Error deleting products: {e}[/red]")
+            raise
+
+        return len(products)
