@@ -3,12 +3,12 @@
 Zara ETL Pipeline - Main Entry Point
 
 Scrapes men's clothing products from Zara, extracts product data and images,
-and saves them to an organized directory structure.
+and saves them to Supabase (or local files).
 
 Usage:
-    python main.py                    # Run with default settings (6 products)
-    python main.py --headless false   # Run with visible browser for debugging
-    python main.py --products 5       # Scrape 5 products per category
+    python main.py                    # Run with default settings
+    python main.py --all              # Scrape ALL products from ALL categories
+    python main.py --all -c jackets   # Scrape ALL jackets
 """
 import argparse
 import asyncio
@@ -24,87 +24,240 @@ from src.pipeline import ZaraPipeline
 
 console = Console()
 
+# Available categories with descriptions
+AVAILABLE_CATEGORIES = {
+    # Clothing
+    "tshirts": {"url": "/us/en/man-tshirts-l855.html", "desc": "T-Shirts & casual tops"},
+    "shirts": {"url": "/us/en/man-shirts-l737.html", "desc": "Dress shirts & button-ups"},
+    "trousers": {"url": "/us/en/man-trousers-l838.html", "desc": "Trousers & dress pants"},
+    "jeans": {"url": "/us/en/man-jeans-l659.html", "desc": "Jeans & denim"},
+    "shorts": {"url": "/us/en/man-shorts-l722.html", "desc": "Shorts & bermudas"},
+    "jackets": {"url": "/us/en/man-jackets-l715.html", "desc": "Jackets & outerwear"},
+    "blazers": {"url": "/us/en/man-blazers-l608.html", "desc": "Blazers & sport coats"},
+    "suits": {"url": "/us/en/man-suits-l599.html", "desc": "Suits & formal wear"},
+    # Footwear & Accessories
+    "shoes": {"url": "/us/en/man-shoes-l769.html", "desc": "All footwear"},
+    "bags": {"url": "/us/en/man-bags-l563.html", "desc": "Bags & backpacks"},
+    "accessories": {"url": "/us/en/man-accessories-l537.html", "desc": "Belts, hats, scarves, etc."},
+    "underwear": {"url": "/us/en/man-underwear-l789.html", "desc": "Underwear & socks"},
+    # Discovery
+    "new-in": {"url": "/us/en/man-new-in-l716.html", "desc": "New arrivals"},
+}
+
+
+class CustomHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Custom formatter that preserves formatting and adds width."""
+    def __init__(self, prog):
+        super().__init__(prog, max_help_position=40, width=100)
+
 
 def parse_args():
     """Parse command line arguments."""
+
+    # Build category list for help text
+    category_list = "\n".join([
+        f"    {name:<14} {info['desc']}"
+        for name, info in AVAILABLE_CATEGORIES.items()
+    ])
+
+    epilog = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AVAILABLE CATEGORIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{category_list}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Basic Usage:
+    python main.py                          Default: 2 products per category
+    python main.py -n 10                    10 products per category
+    python main.py --all                    ALL products from ALL categories
+
+  Single Category:
+    python main.py --all -c jackets         ALL jackets
+    python main.py -n 5 -c tshirts          5 t-shirts
+    python main.py --all -c new-in          All new arrivals
+
+  Multiple Categories:
+    python main.py --all -c tshirts jeans   All t-shirts and jeans
+    python main.py -n 10 -c shoes bags      10 shoes + 10 bags
+
+  Debugging & Testing:
+    python main.py --headless false         Watch the browser scrape
+    python main.py --no-images              Skip image downloads (faster)
+    python main.py -n 1 -c tshirts          Quick test: 1 product
+
+  Storage Options:
+    python main.py --no-supabase            Local files only (no cloud)
+    python main.py --local                  Save to BOTH Supabase AND local
+
+  Database Management:
+    python main.py --stats                  View scraping statistics
+    python main.py --wipe                   ⚠️  DELETE all products
+    python main.py --force                  Re-scrape already-scraped products
+    python main.py --clear-tracking         Clear tracking DB, then scrape
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMMON WORKFLOWS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  First-time full scrape:
+    python main.py --all
+
+  Daily update (only new products):
+    python main.py --all
+    (Already-scraped products are automatically skipped)
+
+  Complete refresh (re-scrape everything):
+    python main.py --all --force
+
+  Start fresh (wipe DB and rescrape):
+    python main.py --wipe
+    python main.py --all
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DATA OUTPUT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Supabase (default):
+    • Products table with all metadata
+    • Images stored in Supabase Storage bucket
+    • Size availability (in_stock, low_on_stock, out_of_stock)
+
+  Local files (--no-supabase or --local):
+    • ./data/zara/mens/<category>/<product_id>/
+        ├── metadata.json    (product data)
+        └── images/          (downloaded images)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  • Products are tracked to avoid duplicate scraping
+  • Use --force to override tracking and re-scrape
+  • The viewer (python viewer.py) provides a web UI at http://localhost:5001
+  • Requires .env file with SUPABASE_URL and SUPABASE_KEY for cloud storage
+"""
+
     parser = argparse.ArgumentParser(
-        description="Zara ETL Pipeline - Scrape men's clothing products"
+        prog="python main.py",
+        description="""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                        ZARA WEB SCRAPER ETL PIPELINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scrapes men's clothing products from Zara, including:
+  • Product metadata (name, price, description, colors, materials)
+  • Size availability (in stock, low stock, out of stock)
+  • Product images (multiple per product)
+
+Data is saved to Supabase (cloud) by default, with optional local file storage.
+""",
+        epilog=epilog,
+        formatter_class=CustomHelpFormatter,
     )
 
-    parser.add_argument(
-        "--products",
-        "-n",
+    # Scraping options group
+    scrape_group = parser.add_argument_group(
+        "Scraping Options",
+        "Control what and how much to scrape"
+    )
+
+    scrape_group.add_argument(
+        "--products", "-n",
         type=int,
         default=2,
-        help="Number of products to scrape per category (default: 2). Use --all to scrape everything.",
+        metavar="NUM",
+        help="Products to scrape per category (default: 2)",
     )
 
-    parser.add_argument(
-        "--all",
-        "-a",
+    scrape_group.add_argument(
+        "--all", "-a",
         action="store_true",
-        help="Scrape ALL products (no limit). Overrides --products.",
+        help="Scrape ALL products (overrides --products)",
     )
 
-    parser.add_argument(
+    scrape_group.add_argument(
+        "--categories", "-c",
+        type=str,
+        nargs="+",
+        default=list(AVAILABLE_CATEGORIES.keys()),
+        metavar="CAT",
+        help="Categories to scrape (default: all). See list below.",
+    )
+
+    scrape_group.add_argument(
+        "--no-images",
+        action="store_true",
+        help="Skip image downloads (faster, metadata only)",
+    )
+
+    # Browser options group
+    browser_group = parser.add_argument_group(
+        "Browser Options",
+        "Control the browser behavior"
+    )
+
+    browser_group.add_argument(
         "--headless",
         type=str,
         default="true",
         choices=["true", "false"],
-        help="Run browser in headless mode (default: true)",
+        metavar="BOOL",
+        help="Run browser invisibly (default: true). Set 'false' to watch.",
     )
 
-    parser.add_argument(
-        "--categories",
-        type=str,
-        nargs="+",
-        default=["tshirts", "shirts", "trousers", "jeans", "shorts", "jackets", "blazers", "suits", "shoes", "bags", "accessories", "underwear", "new-in"],
-        help="Categories to scrape (default: all men's categories)",
+    # Storage options group
+    storage_group = parser.add_argument_group(
+        "Storage Options",
+        "Control where data is saved"
     )
 
-    parser.add_argument(
-        "--output", type=str, default=None, help="Output directory (default: ./data)"
-    )
-
-    parser.add_argument(
-        "--no-images", action="store_true", help="Skip downloading images"
-    )
-
-    parser.add_argument(
-        "--force",
-        "-f",
-        action="store_true",
-        help="Force re-scrape all products, ignoring tracking database",
-    )
-
-    parser.add_argument(
-        "--clear-tracking",
-        action="store_true",
-        help="Clear the tracking database before running",
-    )
-
-    parser.add_argument(
-        "--stats",
-        action="store_true",
-        help="Show tracking statistics and exit",
-    )
-
-    parser.add_argument(
+    storage_group.add_argument(
         "--no-supabase",
         action="store_true",
-        help="Disable Supabase storage (local files only)",
+        help="Disable cloud storage (local files only)",
     )
 
-    parser.add_argument(
+    storage_group.add_argument(
         "--local",
         action="store_true",
         help="Also save to local files (in addition to Supabase)",
     )
 
-    parser.add_argument(
+    storage_group.add_argument(
+        "--output", "-o",
+        type=str,
+        default=None,
+        metavar="DIR",
+        help="Local output directory (default: ./data)",
+    )
+
+    # Database management group
+    db_group = parser.add_argument_group(
+        "Database Management",
+        "Manage tracking and product databases"
+    )
+
+    db_group.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Force re-scrape products (ignore tracking)",
+    )
+
+    db_group.add_argument(
+        "--clear-tracking",
+        action="store_true",
+        help="Clear tracking database before scraping",
+    )
+
+    db_group.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show tracking statistics and exit",
+    )
+
+    db_group.add_argument(
         "--wipe",
         action="store_true",
-        help="⚠️  DANGER: Wipe ALL products from Supabase database and exit",
+        help="⚠️  DELETE ALL products from Supabase and exit",
     )
 
     return parser.parse_args()
@@ -113,24 +266,7 @@ def parse_args():
 def create_config(args) -> PipelineConfig:
     """Create pipeline configuration from arguments."""
     # Build category dict based on selected categories
-    all_categories = {
-        # Clothing
-        "tshirts": "/us/en/man-tshirts-l855.html",
-        "shirts": "/us/en/man-shirts-l737.html",
-        "trousers": "/us/en/man-trousers-l838.html",
-        "jeans": "/us/en/man-jeans-l659.html",
-        "shorts": "/us/en/man-shorts-l722.html",
-        "jackets": "/us/en/man-jackets-l715.html",
-        "blazers": "/us/en/man-blazers-l608.html",
-        "suits": "/us/en/man-suits-l599.html",
-        # Footwear & Accessories
-        "shoes": "/us/en/man-shoes-l769.html",
-        "bags": "/us/en/man-bags-l563.html",
-        "accessories": "/us/en/man-accessories-l537.html",
-        "underwear": "/us/en/man-underwear-l789.html",
-        # Discovery
-        "new-in": "/us/en/man-new-in-l716.html",
-    }
+    all_categories = {k: v["url"] for k, v in AVAILABLE_CATEGORIES.items()}
 
     selected_categories = {
         k: v for k, v in all_categories.items() if k in args.categories
