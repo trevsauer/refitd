@@ -235,6 +235,12 @@ class ZaraExtractor:
         """
         console.print(f"[cyan]Extracting product: {url}[/cyan]")
 
+        # Extract product ID from URL first
+        product_id = self._extract_product_id(url)
+        
+        # Try to get data from ITXRest API first (more reliable)
+        api_data = await self._get_product_from_api(product_id)
+        
         page = await self._create_stealth_page()
 
         try:
@@ -243,48 +249,82 @@ class ZaraExtractor:
             )
             await self._random_delay(2.0)
 
-            # Extract product ID from URL
-            product_id = self._extract_product_id(url)
+            # Extract product name - try API data first, then DOM
+            name = None
+            if api_data and api_data.get("name"):
+                name = api_data["name"]
+            else:
+                name = await self._extract_text(
+                    page,
+                    [
+                        "h1.product-detail-info__header-name",
+                        'h1[class*="product-name"]',
+                        ".product-detail-info h1",
+                        "h1",
+                    ],
+                )
 
-            # Extract product name
-            name = await self._extract_text(
-                page,
-                [
-                    "h1.product-detail-info__header-name",
-                    'h1[class*="product-name"]',
-                    ".product-detail-info h1",
-                    "h1",
-                ],
-            )
+            # Validate: Skip if we still don't have a valid name
+            if not name or name == "Unknown" or len(name) < 2:
+                # Try to extract name from URL as last resort
+                url_name = self._extract_name_from_url(url)
+                if url_name:
+                    name = url_name
+                else:
+                    console.print(f"[yellow]⚠ Skipping product {product_id}: Could not extract name[/yellow]")
+                    return None
 
-            # Extract prices
-            price_current, price_original = await self._extract_prices(page)
+            # Extract prices - try API first, then DOM
+            price_current = None
+            price_original = None
+            if api_data and api_data.get("price"):
+                price_current = api_data["price"]
+                price_original = api_data.get("original_price")
+            else:
+                price_current, price_original = await self._extract_prices(page)
 
             # Extract description
-            description = await self._extract_text(
-                page,
-                [
-                    ".expandable-text__inner-content p",
-                    ".product-detail-description p",
-                    '[class*="description"] p',
-                ],
-            )
+            description = None
+            if api_data and api_data.get("description"):
+                description = api_data["description"]
+            else:
+                description = await self._extract_text(
+                    page,
+                    [
+                        ".expandable-text__inner-content p",
+                        ".product-detail-description p",
+                        '[class*="description"] p',
+                    ],
+                )
 
-            # Extract colors
-            colors = await self._extract_colors(page)
+            # Extract colors - try API first
+            colors = []
+            if api_data and api_data.get("colors"):
+                colors = api_data["colors"]
+            else:
+                colors = await self._extract_colors(page)
 
-            # Extract sizes
+            # Extract sizes (uses API internally)
             sizes = await self._extract_sizes(page)
 
             # Extract materials/composition
             materials = await self._extract_materials(page)
 
-            # Extract image URLs
-            image_urls = await self._extract_images(page)
+            # Extract image URLs - try API first, then DOM
+            image_urls = []
+            if api_data and api_data.get("images"):
+                image_urls = api_data["images"]
+            else:
+                image_urls = await self._extract_images(page)
+
+            # Final validation: Must have either images OR a valid price
+            if not image_urls and not price_current:
+                console.print(f"[yellow]⚠ Skipping product {product_id}: No images and no price (likely blocked)[/yellow]")
+                return None
 
             product_data = RawProductData(
                 product_id=product_id,
-                name=name or "Unknown",
+                name=name,
                 url=url,
                 category=category,
                 price_current=price_current,
@@ -304,6 +344,96 @@ class ZaraExtractor:
             return None
         finally:
             await page.close()
+
+    async def _get_product_from_api(self, product_id: str) -> Optional[dict]:
+        """
+        Get product data from Zara's ITXRest API.
+        
+        Returns dict with: name, price, original_price, description, colors, images
+        """
+        try:
+            import httpx
+            
+            api_url = f"https://www.zara.com/itxrest/2/catalog/store/11719/product/{product_id}"
+            
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.zara.com/us/en/",
+            }
+            
+            async with httpx.AsyncClient(follow_redirects=True) as client:
+                response = await client.get(api_url, headers=headers, timeout=10)
+                
+                if response.status_code != 200:
+                    return None
+                
+                data = response.json()
+                result = {}
+                
+                # Extract name
+                result["name"] = data.get("name", "")
+                
+                # Extract description
+                if "detail" in data:
+                    desc_parts = []
+                    for key in ["description", "longDescription"]:
+                        if data["detail"].get(key):
+                            desc_parts.append(data["detail"][key])
+                    result["description"] = " ".join(desc_parts) if desc_parts else None
+                
+                # Extract colors and images from first color variant
+                if "detail" in data and "colors" in data["detail"]:
+                    colors_data = data["detail"]["colors"]
+                    if colors_data:
+                        # Get color names
+                        result["colors"] = [c.get("name", "") for c in colors_data if c.get("name")]
+                        
+                        # Get images from first color
+                        first_color = colors_data[0]
+                        if "xmedia" in first_color:
+                            images = []
+                            for media in first_color["xmedia"]:
+                                if media.get("path") and media.get("name"):
+                                    # Build the image URL
+                                    img_url = f"https://static.zara.net/photos/{media['path']}/{media['name']}"
+                                    # Get a reasonable size
+                                    img_url = img_url.replace(".jpg", ".jpg?ts=1&w=850")
+                                    images.append(img_url)
+                            result["images"] = images[:5]  # Limit to 5 images
+                        
+                        # Get price from first color's first size
+                        if "sizes" in first_color and first_color["sizes"]:
+                            first_size = first_color["sizes"][0]
+                            if "price" in first_size:
+                                # Price is in cents
+                                result["price"] = first_size["price"] / 100
+                            if "oldPrice" in first_size:
+                                result["original_price"] = first_size["oldPrice"] / 100
+                
+                if result.get("name"):
+                    console.print(f"[dim]Got product data from API: {result.get('name')}[/dim]")
+                    return result
+                    
+        except Exception as e:
+            console.print(f"[dim]API lookup failed: {e}[/dim]")
+        
+        return None
+
+    def _extract_name_from_url(self, url: str) -> Optional[str]:
+        """Extract a product name from the URL as a fallback."""
+        try:
+            # URL format: /us/en/product-name-here-p12345678.html
+            match = re.search(r'/([^/]+)-p\d+\.html', url)
+            if match:
+                name_slug = match.group(1)
+                # Convert slug to title case
+                name = name_slug.replace('-', ' ').title()
+                return name
+        except:
+            pass
+        return None
 
     def _extract_product_id(self, url: str) -> str:
         """Extract product ID from URL."""
