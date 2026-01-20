@@ -70,6 +70,12 @@ python main.py
 # Scrape 5 products per category (15 total)
 python main.py --products 5
 
+# Scrape ALL products from a single category
+python main.py --all --categories tshirts
+
+# Scrape ALL products across ALL categories
+python main.py --all
+
 # Run with visible browser (for debugging)
 python main.py --headless false
 
@@ -88,10 +94,13 @@ python main.py --output /path/to/output
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-n, --products` | Products per category | 2 |
+| `-a, --all` | Scrape ALL products (no limit) | false |
 | `--headless` | Run browser in headless mode | true |
-| `--categories` | Categories to scrape | tshirts pants jackets |
+| `--categories` | Categories to scrape | all 13 categories |
 | `--output` | Output directory | ./data |
 | `--no-images` | Skip image downloads | false |
+| `-f, --force` | Force re-scrape, ignore tracking | false |
+| `--wipe` | Delete all products from Supabase | - |
 
 ## Output
 

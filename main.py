@@ -36,7 +36,14 @@ def parse_args():
         "-n",
         type=int,
         default=2,
-        help="Number of products to scrape per category (default: 2)",
+        help="Number of products to scrape per category (default: 2). Use --all to scrape everything.",
+    )
+
+    parser.add_argument(
+        "--all",
+        "-a",
+        action="store_true",
+        help="Scrape ALL products (no limit). Overrides --products.",
     )
 
     parser.add_argument(
@@ -129,8 +136,11 @@ def create_config(args) -> PipelineConfig:
         k: v for k, v in all_categories.items() if k in args.categories
     }
 
+    # Handle --all flag: use a very high number to effectively scrape all products
+    products_per_category = 9999 if args.all else args.products
+
     scraper_config = ScraperConfig(
-        products_per_category=args.products,
+        products_per_category=products_per_category,
         headless=args.headless.lower() == "true",
         categories=selected_categories,
     )
