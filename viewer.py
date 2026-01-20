@@ -1819,10 +1819,26 @@ HTML_TEMPLATE = """
 
                     <div class="scraper-controls">
                         <label>Categories:</label>
-                        <select id="scraperCategories" multiple style="height: 70px;">
-                            <option value="tshirts" selected>T-Shirts</option>
-                            <option value="pants" selected>Pants</option>
-                            <option value="jackets" selected>Jackets</option>
+                        <select id="scraperCategories" multiple style="height: 150px;">
+                            <optgroup label="Clothing">
+                                <option value="tshirts" selected>T-Shirts</option>
+                                <option value="shirts" selected>Shirts</option>
+                                <option value="trousers" selected>Trousers</option>
+                                <option value="jeans" selected>Jeans</option>
+                                <option value="shorts" selected>Shorts</option>
+                                <option value="jackets" selected>Jackets</option>
+                                <option value="blazers" selected>Blazers</option>
+                                <option value="suits" selected>Suits</option>
+                            </optgroup>
+                            <optgroup label="Footwear & Accessories">
+                                <option value="shoes" selected>Shoes</option>
+                                <option value="bags" selected>Bags</option>
+                                <option value="accessories" selected>Accessories</option>
+                                <option value="underwear" selected>Underwear</option>
+                            </optgroup>
+                            <optgroup label="Discovery">
+                                <option value="new-in" selected>New In</option>
+                            </optgroup>
                         </select>
 
                         <label>Products per category:</label>
@@ -2937,7 +2953,7 @@ def start_scraper():
     scraper_status["error"] = None
 
     data = request.get_json() or {}
-    categories = data.get("categories", ["tshirts", "pants", "jackets"])
+    categories = data.get("categories", ["tshirts", "shirts", "trousers", "jeans", "shorts", "jackets", "blazers", "suits", "shoes", "bags", "accessories", "underwear", "new-in"])
     products_per_category = data.get("products_per_category", 2)
 
     # Start scraper in background thread

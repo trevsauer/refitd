@@ -19,9 +19,22 @@ class ScraperConfig:
     # Category URLs for Men's clothing
     categories: dict = field(
         default_factory=lambda: {
+            # Clothing
             "tshirts": "/us/en/man-tshirts-l855.html",
-            "pants": "/us/en/man-trousers-l838.html",
-            "jackets": "/us/en/man-jackets-l640.html",
+            "shirts": "/us/en/man-shirts-l737.html",
+            "trousers": "/us/en/man-trousers-l838.html",
+            "jeans": "/us/en/man-jeans-l659.html",
+            "shorts": "/us/en/man-shorts-l722.html",
+            "jackets": "/us/en/man-jackets-l715.html",
+            "blazers": "/us/en/man-blazers-l608.html",
+            "suits": "/us/en/man-suits-l599.html",
+            # Footwear & Accessories
+            "shoes": "/us/en/man-shoes-l769.html",
+            "bags": "/us/en/man-bags-l563.html",
+            "accessories": "/us/en/man-accessories-l537.html",
+            "underwear": "/us/en/man-underwear-l789.html",
+            # Discovery
+            "new-in": "/us/en/man-new-in-l716.html",
         }
     )
 
