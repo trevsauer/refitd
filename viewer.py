@@ -22,13 +22,20 @@ from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template_string, request, send_from_directory
 
-# Load environment variables
+# Load environment variables (optional - credentials are hardcoded as fallback)
 load_dotenv(Path(__file__).parent / ".env")
 
 app = Flask(__name__)
 
 # Data directory for local files
 DATA_DIR = Path(__file__).parent / "data" / "zara" / "mens"
+
+# ============================================
+# SUPABASE CREDENTIALS (Hardcoded for easy sharing)
+# ============================================
+# These credentials allow anyone who clones the repo to connect immediately
+DEFAULT_SUPABASE_URL = "https://uochfddhtkzrvcmfwksm.supabase.co"
+DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvY2hmZGRodGt6cnZjbWZ3a3NtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg1MDA1NDEsImV4cCI6MjA4NDA3NjU0MX0.mzBTf1GV8_Vk-nIMvf26PxI_MAqZfStzRTEZBEvHyLU"
 
 # Global flag for data source
 USE_SUPABASE = False
@@ -59,14 +66,9 @@ def init_supabase():
     """Initialize Supabase client."""
     global supabase_client
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_KEY")
-
-    if not supabase_url or not supabase_key:
-        raise ValueError(
-            "Supabase credentials not found. "
-            "Set SUPABASE_URL and SUPABASE_KEY in .env file."
-        )
+    # Use environment variables if available, otherwise use hardcoded defaults
+    supabase_url = os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL
+    supabase_key = os.getenv("SUPABASE_KEY") or DEFAULT_SUPABASE_KEY
 
     from supabase import create_client
 
@@ -2561,11 +2563,21 @@ def api_products():
 def delete_product(product_id):
     """Delete a product from the database and storage."""
     if not USE_SUPABASE or not supabase_client:
-        return jsonify({"error": "Supabase not configured. Deletion only works with Supabase."}), 400
+        return (
+            jsonify(
+                {"error": "Supabase not configured. Deletion only works with Supabase."}
+            ),
+            400,
+        )
 
     try:
         # First, get the product to find its image paths
-        product_result = supabase_client.table("products").select("image_paths, name").eq("product_id", product_id).execute()
+        product_result = (
+            supabase_client.table("products")
+            .select("image_paths, name")
+            .eq("product_id", product_id)
+            .execute()
+        )
 
         if not product_result.data:
             return jsonify({"error": "Product not found"}), 404
@@ -2584,38 +2596,49 @@ def delete_product(product_id):
 
         # Delete from curated_metadata table (if exists)
         try:
-            supabase_client.table("curated_metadata").delete().eq("product_id", product_id).execute()
+            supabase_client.table("curated_metadata").delete().eq(
+                "product_id", product_id
+            ).execute()
         except Exception:
             pass  # Table may not exist
 
         # Delete from curation_status table (if exists)
         try:
-            supabase_client.table("curation_status").delete().eq("product_id", product_id).execute()
+            supabase_client.table("curation_status").delete().eq(
+                "product_id", product_id
+            ).execute()
         except Exception:
             pass  # Table may not exist
 
         # Delete from rejected_tags table (if exists)
         try:
-            supabase_client.table("rejected_tags").delete().eq("product_id", product_id).execute()
+            supabase_client.table("rejected_tags").delete().eq(
+                "product_id", product_id
+            ).execute()
         except Exception:
             pass  # Table may not exist
 
         # Delete the product itself
-        supabase_client.table("products").delete().eq("product_id", product_id).execute()
+        supabase_client.table("products").delete().eq(
+            "product_id", product_id
+        ).execute()
 
         # Also remove from local tracking database
         try:
             from src.tracking import ProductTracker
+
             tracker = ProductTracker()
             tracker.remove_product(product_id)
         except Exception as e:
             print(f"Warning: Could not remove from tracking DB: {e}")
 
-        return jsonify({
-            "success": True,
-            "message": f"Product {product_id} deleted successfully",
-            "images_deleted": images_deleted
-        })
+        return jsonify(
+            {
+                "success": True,
+                "message": f"Product {product_id} deleted successfully",
+                "images_deleted": images_deleted,
+            }
+        )
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -3134,7 +3157,24 @@ def start_scraper():
     scraper_status["error"] = None
 
     data = request.get_json() or {}
-    categories = data.get("categories", ["tshirts", "shirts", "trousers", "jeans", "shorts", "jackets", "blazers", "suits", "shoes", "bags", "accessories", "underwear", "new-in"])
+    categories = data.get(
+        "categories",
+        [
+            "tshirts",
+            "shirts",
+            "trousers",
+            "jeans",
+            "shorts",
+            "jackets",
+            "blazers",
+            "suits",
+            "shoes",
+            "bags",
+            "accessories",
+            "underwear",
+            "new-in",
+        ],
+    )
     products_per_category = data.get("products_per_category", 2)
 
     # Start scraper in background thread

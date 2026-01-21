@@ -15,10 +15,17 @@ from dotenv import load_dotenv
 from rich.console import Console
 from supabase import Client, create_client
 
-# Load .env file from project root
+# Load .env file from project root (optional - credentials are hardcoded as fallback)
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 console = Console()
+
+# ============================================
+# SUPABASE CREDENTIALS (Hardcoded for easy sharing)
+# ============================================
+# These credentials allow anyone who clones the repo to connect immediately
+DEFAULT_SUPABASE_URL = "https://uochfddhtkzrvcmfwksm.supabase.co"
+DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvY2hmZGRodGt6cnZjbWZ3a3NtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg1MDA1NDEsImV4cCI6MjA4NDA3NjU0MX0.mzBTf1GV8_Vk-nIMvf26PxI_MAqZfStzRTEZBEvHyLU"
 
 
 class SupabaseLoader:
@@ -39,18 +46,17 @@ class SupabaseLoader:
         Initialize the Supabase loader.
 
         Args:
-            supabase_url: Supabase project URL (or set SUPABASE_URL env var)
-            supabase_key: Supabase anon/service key (or set SUPABASE_KEY env var)
+            supabase_url: Supabase project URL (or set SUPABASE_URL env var, or uses hardcoded default)
+            supabase_key: Supabase anon/service key (or set SUPABASE_KEY env var, or uses hardcoded default)
             bucket_name: Name of the storage bucket for images
         """
-        self.supabase_url = supabase_url or os.getenv("SUPABASE_URL")
-        self.supabase_key = supabase_key or os.getenv("SUPABASE_KEY")
-
-        if not self.supabase_url or not self.supabase_key:
-            raise ValueError(
-                "Supabase credentials required. Set SUPABASE_URL and SUPABASE_KEY "
-                "environment variables or pass them to the constructor."
-            )
+        # Use provided values, then env vars, then hardcoded defaults
+        self.supabase_url = (
+            supabase_url or os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL
+        )
+        self.supabase_key = (
+            supabase_key or os.getenv("SUPABASE_KEY") or DEFAULT_SUPABASE_KEY
+        )
 
         self.client: Client = create_client(self.supabase_url, self.supabase_key)
         self.bucket_name = bucket_name
@@ -376,7 +382,11 @@ class SupabaseLoader:
         console.print("[yellow]Fetching all products...[/yellow]")
 
         # Get all products to find their image paths
-        all_products = self.client.table("products").select("product_id, image_paths, name").execute()
+        all_products = (
+            self.client.table("products")
+            .select("product_id, image_paths, name")
+            .execute()
+        )
         products = all_products.data or []
 
         if not products:
@@ -394,15 +404,19 @@ class SupabaseLoader:
 
         # Delete images from storage (in batches to avoid timeout)
         if all_image_paths:
-            console.print(f"[yellow]Deleting {len(all_image_paths)} images from storage...[/yellow]")
+            console.print(
+                f"[yellow]Deleting {len(all_image_paths)} images from storage...[/yellow]"
+            )
             batch_size = 100
             for i in range(0, len(all_image_paths), batch_size):
-                batch = all_image_paths[i:i + batch_size]
+                batch = all_image_paths[i : i + batch_size]
                 try:
                     self.client.storage.from_(self.bucket_name).remove(batch)
                     console.print(f"[dim]  Deleted batch {i // batch_size + 1}[/dim]")
                 except Exception as e:
-                    console.print(f"[yellow]  Warning: Failed to delete some images: {e}[/yellow]")
+                    console.print(
+                        f"[yellow]  Warning: Failed to delete some images: {e}[/yellow]"
+                    )
 
         # Delete all products from database
         console.print("[yellow]Deleting all product records from database...[/yellow]")
@@ -411,7 +425,9 @@ class SupabaseLoader:
         # Or we can use a trick: delete where product_id is not null (matches all)
         try:
             self.client.table("products").delete().neq("product_id", "").execute()
-            console.print(f"[green]✓ Deleted {len(products)} products from database[/green]")
+            console.print(
+                f"[green]✓ Deleted {len(products)} products from database[/green]"
+            )
         except Exception as e:
             console.print(f"[red]Error deleting products: {e}[/red]")
             raise
