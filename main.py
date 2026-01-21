@@ -92,11 +92,17 @@ EXAMPLES
     python main.py --no-supabase            Local files only (no cloud)
     python main.py --local                  Save to BOTH Supabase AND local
 
-  Database Management:
-    python main.py --stats                  View scraping statistics
-    python main.py --wipe                   ⚠️  DELETE all products
-    python main.py --force                  Re-scrape already-scraped products
-    python main.py --clear-tracking         Clear tracking DB, then scrape
+    Database Management:
+      python main.py --stats                  View scraping statistics
+      python main.py --wipe                   ⚠️  DELETE all products
+      python main.py --force                  Re-scrape already-scraped products
+      python main.py --clear-tracking         Clear tracking DB, then scrape
+
+    AI Features (requires Ollama: ollama serve):
+      python main.py --ai-status              Check Ollama connection & models
+      python main.py --generate-tags          Generate style tags for all products
+      python main.py --generate-embeddings    Generate search embeddings
+      python main.py --ai-chat                Start interactive chat assistant
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 COMMON WORKFLOWS
@@ -260,7 +266,304 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
         help="⚠️  DELETE ALL products from Supabase and exit",
     )
 
+    # AI features group
+    ai_group = parser.add_argument_group(
+        "AI Features",
+        "AI-powered features (requires Ollama: brew install ollama && ollama serve)"
+    )
+
+    ai_group.add_argument(
+        "--ai-status",
+        action="store_true",
+        help="Check Ollama connection and available models",
+    )
+
+    ai_group.add_argument(
+        "--generate-tags",
+        action="store_true",
+        help="Generate AI style tags for products without tags",
+    )
+
+    ai_group.add_argument(
+        "--generate-embeddings",
+        action="store_true",
+        help="Generate search embeddings for all products",
+    )
+
+    ai_group.add_argument(
+        "--ai-chat",
+        action="store_true",
+        help="Start interactive AI fashion assistant chat",
+    )
+
+    ai_group.add_argument(
+        "--tag-product",
+        type=str,
+        metavar="ID",
+        help="Generate tags for a specific product by ID",
+    )
+
     return parser.parse_args()
+
+
+async def ai_status():
+    """Check Ollama status and available models."""
+    console.print("\n[bold cyan]AI Service Status[/bold cyan]\n")
+
+    try:
+        from src.ai import OllamaClient
+
+        async with OllamaClient() as client:
+            available = await client.is_available()
+
+            if available:
+                console.print("[green]✓ Ollama is running[/green]")
+
+                models = await client.list_models()
+                console.print(f"\n[cyan]Available models ({len(models)}):[/cyan]")
+                for model in models:
+                    console.print(f"  • {model}")
+
+                # Check required models
+                console.print("\n[cyan]Required models:[/cyan]")
+                required = {
+                    "phi3.5": "Chat/reasoning",
+                    "moondream": "Vision/image analysis",
+                    "nomic-embed-text": "Text embeddings",
+                }
+
+                for model, purpose in required.items():
+                    found = any(model in m for m in models)
+                    status = "[green]✓[/green]" if found else "[red]✗ (run: ollama pull " + model + ")[/red]"
+                    console.print(f"  {model:<20} {purpose:<25} {status}")
+
+                return 0
+            else:
+                console.print("[red]✗ Ollama is not running[/red]")
+                console.print("\n[yellow]To start Ollama:[/yellow]")
+                console.print("  1. Install: brew install ollama")
+                console.print("  2. Start: ollama serve")
+                console.print("  3. Pull models: ollama pull phi3.5 moondream nomic-embed-text")
+                return 1
+
+    except ImportError as e:
+        console.print(f"[red]Error importing AI module: {e}[/red]")
+        return 1
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return 1
+
+
+async def ai_generate_tags():
+    """Generate style tags for all products."""
+    console.print("\n[bold cyan]Generating Style Tags[/bold cyan]\n")
+
+    try:
+        from src.ai import StyleTagger, OllamaClient
+        from src.loaders.supabase_loader import SupabaseLoader
+
+        loader = SupabaseLoader()
+
+        # Get products without tags
+        response = loader.client.table("products").select("*").execute()
+        products = response.data or []
+
+        # Filter to products without tags or with empty tags
+        products_to_tag = [
+            p for p in products
+            if not p.get("tags") or len(p.get("tags", [])) == 0
+        ]
+
+        if not products_to_tag:
+            console.print("[yellow]All products already have tags![/yellow]")
+            return 0
+
+        console.print(f"[cyan]Found {len(products_to_tag)} products without tags[/cyan]")
+
+        async with OllamaClient() as client:
+            if not await client.is_available():
+                console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+                return 1
+
+            tagger = StyleTagger(ollama_client=client)
+
+            results = await tagger.generate_tags_batch(products_to_tag)
+
+            # Save tags to database
+            saved = 0
+            for product_id, tags in results.items():
+                try:
+                    loader.client.table("products").update({
+                        "tags": tags
+                    }).eq("id", product_id).execute()
+                    saved += 1
+                    console.print(f"  [green]✓[/green] {product_id}: {tags}")
+                except Exception as e:
+                    console.print(f"  [red]✗[/red] {product_id}: {e}")
+
+            console.print(f"\n[green]Generated tags for {saved} products[/green]")
+            return 0
+
+    except ImportError as e:
+        console.print(f"[red]Error importing modules: {e}[/red]")
+        return 1
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return 1
+
+
+async def ai_generate_embeddings():
+    """Generate search embeddings for all products."""
+    console.print("\n[bold cyan]Generating Search Embeddings[/bold cyan]\n")
+
+    try:
+        from src.ai import EmbeddingsService, OllamaClient
+        from src.loaders.supabase_loader import SupabaseLoader
+
+        loader = SupabaseLoader()
+
+        # Get all products
+        response = loader.client.table("products").select("*").execute()
+        products = response.data or []
+
+        if not products:
+            console.print("[yellow]No products found in database[/yellow]")
+            return 0
+
+        console.print(f"[cyan]Generating embeddings for {len(products)} products[/cyan]")
+
+        async with OllamaClient() as client:
+            if not await client.is_available():
+                console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+                return 1
+
+            embeddings_service = EmbeddingsService(
+                supabase_client=loader.client,
+                ollama_client=client,
+            )
+
+            # Generate embeddings
+            embeddings = await embeddings_service.generate_all_embeddings(products)
+
+            if embeddings:
+                # Try to store in database
+                try:
+                    stored = await embeddings_service.store_embeddings(embeddings)
+                    console.print(f"\n[green]Stored {stored} embeddings in database[/green]")
+                except Exception as e:
+                    console.print(f"\n[yellow]Could not store in database: {e}[/yellow]")
+                    console.print("[dim]Embeddings were generated but need pgvector setup[/dim]")
+                    console.print("\n[cyan]Run this SQL in Supabase to enable embedding storage:[/cyan]")
+                    console.print("[dim]CREATE EXTENSION IF NOT EXISTS vector;[/dim]")
+                    console.print("[dim]ALTER TABLE products ADD COLUMN IF NOT EXISTS embedding vector(768);[/dim]")
+
+            return 0
+
+    except ImportError as e:
+        console.print(f"[red]Error importing modules: {e}[/red]")
+        return 1
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return 1
+
+
+async def ai_chat():
+    """Start interactive AI chat."""
+    console.print("\n[bold cyan]Starting AI Fashion Assistant[/bold cyan]\n")
+
+    try:
+        from src.ai import ChatAssistant, OllamaClient
+
+        # Try to connect to Supabase for product context
+        supabase_client = None
+        try:
+            from src.loaders.supabase_loader import SupabaseLoader
+            loader = SupabaseLoader()
+            supabase_client = loader.client
+            console.print("[dim]Connected to Supabase for product context[/dim]")
+        except Exception:
+            console.print("[yellow]Running without product context (Supabase not available)[/yellow]")
+
+        async with OllamaClient() as client:
+            if not await client.is_available():
+                console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+                return 1
+
+            assistant = ChatAssistant(
+                supabase_client=supabase_client,
+                ollama_client=client,
+            )
+
+            await assistant.interactive_chat()
+            return 0
+
+    except ImportError as e:
+        console.print(f"[red]Error importing modules: {e}[/red]")
+        return 1
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return 1
+
+
+async def ai_tag_product(product_id: str):
+    """Generate tags for a specific product."""
+    console.print(f"\n[bold cyan]Generating Tags for Product: {product_id}[/bold cyan]\n")
+
+    try:
+        from src.ai import StyleTagger, OllamaClient
+        from src.loaders.supabase_loader import SupabaseLoader
+
+        loader = SupabaseLoader()
+
+        # Get the product
+        response = loader.client.table("products").select("*").eq("id", product_id).execute()
+
+        if not response.data:
+            console.print(f"[red]Product {product_id} not found[/red]")
+            return 1
+
+        product = response.data[0]
+        console.print(f"[cyan]Product: {product.get('name', 'Unknown')}[/cyan]")
+
+        image_url = product.get("primary_image", "")
+        if not image_url:
+            console.print("[yellow]No image available for this product[/yellow]")
+            return 1
+
+        async with OllamaClient() as client:
+            if not await client.is_available():
+                console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+                return 1
+
+            tagger = StyleTagger(ollama_client=client)
+
+            console.print("[dim]Analyzing image with vision model...[/dim]")
+
+            tags = await tagger.generate_tags(
+                image_url=image_url,
+                product_name=product.get("name", ""),
+                product_description=product.get("description", ""),
+            )
+
+            console.print(f"\n[green]Generated tags:[/green] {tags}")
+
+            # Optionally save to database
+            try:
+                loader.client.table("products").update({
+                    "tags": tags
+                }).eq("id", product_id).execute()
+                console.print("[green]✓ Tags saved to database[/green]")
+            except Exception as e:
+                console.print(f"[yellow]Could not save tags: {e}[/yellow]")
+
+            return 0
+
+    except ImportError as e:
+        console.print(f"[red]Error importing modules: {e}[/red]")
+        return 1
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        return 1
 
 
 def create_config(args) -> PipelineConfig:
@@ -318,6 +621,22 @@ def main():
     from src.tracking import ProductTracker
 
     tracker = ProductTracker()
+
+    # Handle AI commands first (they exit after running)
+    if args.ai_status:
+        return asyncio.run(ai_status())
+
+    if args.generate_tags:
+        return asyncio.run(ai_generate_tags())
+
+    if args.generate_embeddings:
+        return asyncio.run(ai_generate_embeddings())
+
+    if args.ai_chat:
+        return asyncio.run(ai_chat())
+
+    if args.tag_product:
+        return asyncio.run(ai_tag_product(args.tag_product))
 
     # Handle --stats flag: show tracking stats and exit
     if args.stats:
