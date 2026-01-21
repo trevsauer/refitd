@@ -1125,13 +1125,13 @@ HTML_TEMPLATE = """
                 transform: none;
             }
 
-            /* AI Generate Tags Button for Product Page */
+            /* AI Generate Tags Button for Product Page - Teal color to match AI tags */
             .ai-generate-btn {
                 display: inline-flex;
                 align-items: center;
                 gap: 6px;
                 padding: 8px 16px;
-                background: linear-gradient(135deg, #9c27b0, #7b1fa2);
+                background: linear-gradient(135deg, #00bcd4, #0097a7);
                 color: #fff;
                 border: none;
                 border-radius: 6px;
@@ -1144,7 +1144,7 @@ HTML_TEMPLATE = """
 
             .ai-generate-btn:hover {
                 transform: translateY(-1px);
-                box-shadow: 0 4px 12px rgba(156, 39, 176, 0.4);
+                box-shadow: 0 4px 12px rgba(0, 188, 212, 0.4);
             }
 
             .ai-generate-btn:disabled {
@@ -1214,6 +1214,10 @@ HTML_TEMPLATE = """
             }
 
             .curate-mode .ai-generated-tag .tag-delete-btn {
+                display: inline-block;
+            }
+
+            .curate-mode .ai-tag-delete {
                 display: inline-block;
             }
 
@@ -1968,10 +1972,10 @@ HTML_TEMPLATE = """
 
             return aiTags.map(tag => {
                 return `<span class="tag-container">
-                    <span class="ai-generated-tag" data-type="ai-generated" data-field="${tag.field_name}" data-value="${tag.field_value}">
-                        ${tag.field_value} <span class="ai-badge">🤖 AI</span>
+                    <span class="ai-generated-tag" style="background: linear-gradient(135deg, #00bcd4, #0097a7); color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 13px; display: inline-flex; align-items: center; gap: 5px;" data-type="ai-generated" data-field="${tag.field_name}" data-value="${tag.field_value}">
+                        ${tag.field_value} <span class="ai-badge" style="font-size: 10px; opacity: 0.9; background: rgba(255,255,255,0.2); padding: 1px 4px; border-radius: 3px;">🤖 AI</span>
                     </span>
-                    <button class="tag-delete-btn" onclick="handleAITagDelete('${tag.field_name}', '${tag.field_value}')" title="Delete AI-generated tag">×</button>
+                    <button class="tag-delete-btn ai-tag-delete" onclick="event.stopPropagation(); handleAITagDelete('${tag.field_name}', '${tag.field_value}')" title="Delete AI-generated tag">×</button>
                 </span>`;
             }).join('');
         }
@@ -2592,7 +2596,7 @@ HTML_TEMPLATE = """
             // Set loading state
             btn.classList.add('loading');
             btn.disabled = true;
-            statusDiv.innerHTML = '<span style="color: #9c27b0;">🔄 Analyzing product images with AI...</span>';
+            statusDiv.innerHTML = '<span style="color: #0097a7;">🔄 Analyzing product images with AI...</span>';
 
             try {
                 const response = await fetch('/api/ai/generate-tags', {
@@ -2606,17 +2610,22 @@ HTML_TEMPLATE = """
                 if (data.error) {
                     statusDiv.innerHTML = `<span style="color: #c62828;">❌ ${data.error}</span>`;
                 } else if (data.tags && data.tags.length > 0) {
-                    statusDiv.innerHTML = `<span style="color: #2e7d32;">✅ Generated ${data.tags.length} tags successfully!</span>`;
+                    statusDiv.innerHTML = `<span style="color: #0097a7;">✅ Generated ${data.tags.length} tags successfully!</span>`;
 
-                    // Reload products and refresh display to show new tags
-                    await loadProducts();
+                    // Build the new AI tags and append them directly to the page without reloading
+                    const newAITags = data.tags.map(tagValue => ({
+                        field_name: 'style_tag',
+                        field_value: tagValue
+                    }));
 
-                    // Find the current product index again (might have changed)
-                    const newIndex = products.findIndex(p => p.product_id === productId);
-                    if (newIndex >= 0) {
-                        await displayProduct(newIndex);
-                    } else {
-                        await displayProduct(currentIndex);
+                    // Add new tags to the global array
+                    window.currentAIGeneratedTags = [...(window.currentAIGeneratedTags || []), ...newAITags];
+
+                    // Render the new tags directly into the style tags list
+                    const styleTagsList = document.getElementById('styleTagsList');
+                    if (styleTagsList) {
+                        const newTagsHtml = renderAIGeneratedTagsInline(newAITags);
+                        styleTagsList.insertAdjacentHTML('beforeend', newTagsHtml);
                     }
                 } else {
                     statusDiv.innerHTML = `<span style="color: #ff9800;">⚠️ No tags generated</span>`;
@@ -4259,6 +4268,30 @@ def ai_generate_tags():
 
                     product = product_result.data[0]
 
+                    # Get existing inferred style tags (to avoid duplicates)
+                    existing_style_tags = product.get("style_tags", []) or []
+                    # Normalize to lowercase for comparison - handle both string and object formats
+                    existing_tags_lower = set()
+                    for tag in existing_style_tags:
+                        if isinstance(tag, str):
+                            existing_tags_lower.add(tag.lower().strip())
+                        elif isinstance(tag, dict) and "tag" in tag:
+                            existing_tags_lower.add(tag["tag"].lower().strip())
+
+                    # Also get existing AI-generated tags to avoid duplicates
+                    try:
+                        existing_ai_result = (
+                            supabase_client.table("ai_generated_tags")
+                            .select("field_value")
+                            .eq("product_id", product_id)
+                            .eq("field_name", "style_tag")
+                            .execute()
+                        )
+                        for ai_tag in existing_ai_result.data or []:
+                            existing_tags_lower.add(ai_tag["field_value"].lower().strip())
+                    except Exception:
+                        pass  # Table might not exist yet
+
                     # Get image URL
                     image_paths = product.get("image_paths", [])
                     supabase_url = os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL
@@ -4277,7 +4310,16 @@ def ai_generate_tags():
                         product_description=product.get("description", ""),
                     )
 
+                    # Filter out tags that already exist (case-insensitive comparison)
+                    if tags:
+                        original_count = len(tags)
+                        tags = [tag for tag in tags if tag.lower().strip() not in existing_tags_lower]
+                        filtered_count = original_count - len(tags)
+                        if filtered_count > 0:
+                            print(f"Filtered out {filtered_count} duplicate tags")
+
                     # Save tags to ai_generated_tags table (separate from inferred/curated)
+                    if tags:
                     if tags:
                         records = [
                             {
@@ -4319,6 +4361,29 @@ def ai_generate_tags():
                         if not image_paths:
                             continue
 
+                        # Get existing inferred style tags for this product
+                        existing_style_tags = product.get("style_tags", []) or []
+                        existing_tags_lower = set()
+                        for tag in existing_style_tags:
+                            if isinstance(tag, str):
+                                existing_tags_lower.add(tag.lower().strip())
+                            elif isinstance(tag, dict) and "tag" in tag:
+                                existing_tags_lower.add(tag["tag"].lower().strip())
+
+                        # Also get existing AI-generated tags
+                        try:
+                            existing_ai_result = (
+                                supabase_client.table("ai_generated_tags")
+                                .select("field_value")
+                                .eq("product_id", product.get("product_id"))
+                                .eq("field_name", "style_tag")
+                                .execute()
+                            )
+                            for ai_tag in existing_ai_result.data or []:
+                                existing_tags_lower.add(ai_tag["field_value"].lower().strip())
+                        except Exception:
+                            pass
+
                         image_url = f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{image_paths[0]}"
 
                         tags = await tagger.generate_tags(
@@ -4326,6 +4391,10 @@ def ai_generate_tags():
                             product_name=product.get("name", ""),
                             product_description=product.get("description", ""),
                         )
+
+                        # Filter out duplicates
+                        if tags:
+                            tags = [tag for tag in tags if tag.lower().strip() not in existing_tags_lower]
 
                         if tags:
                             # Save to ai_generated_tags table
