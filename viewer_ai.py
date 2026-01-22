@@ -364,9 +364,128 @@ HTML_TEMPLATE = """
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 20px;
+            display: flex;
+            gap: 20px;
+        }
+
+        /* Category Sidebar */
+        .category-sidebar {
+            width: 260px;
+            flex-shrink: 0;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            padding: 20px;
+            height: fit-content;
+            position: sticky;
+            top: 20px;
+        }
+
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .sidebar-header h3 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .sidebar-header .category-icon {
+            font-size: 20px;
+        }
+
+        .category-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .category-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 14px;
+            margin-bottom: 6px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: #f8f9fa;
+            border: 2px solid transparent;
+        }
+
+        .category-item:hover {
+            background: #e8f4fd;
+            border-color: #e0e0e0;
+        }
+
+        .category-item.active {
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            border-color: #2196F3;
+            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.2);
+        }
+
+        .category-item.all-categories {
+            background: linear-gradient(135deg, #f5f5f5, #eeeeee);
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .category-item.all-categories.active {
+            background: linear-gradient(135deg, #333, #555);
+            color: #fff;
+            border-color: #333;
+        }
+
+        .category-item.all-categories.active .category-count {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+        }
+
+        .category-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            text-transform: capitalize;
+        }
+
+        .category-item.active .category-name {
+            color: #1565c0;
+        }
+
+        .category-item.all-categories.active .category-name {
+            color: #fff;
+        }
+
+        .category-count {
+            background: #e0e0e0;
+            color: #666;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 12px;
+            min-width: 28px;
+            text-align: center;
+        }
+
+        .category-item.active .category-count {
+            background: #2196F3;
+            color: #fff;
+        }
+
+        /* Main content area adjustment */
+        .main-content {
+            flex: 1;
+            min-width: 0;
         }
 
         .navigation {
@@ -1348,12 +1467,29 @@ HTML_TEMPLATE = """
     </header>
 
     <div class="container">
-        <!-- Tab Navigation -->
-        <div class="tab-nav">
-            <button class="tab-btn active" id="tabProducts" onclick="switchTab('products')">📦 Products</button>
-            <button class="tab-btn" id="tabAI" onclick="switchTab('ai')">🤖 AI Assistant</button>
-            <button class="tab-btn" id="tabDashboard" onclick="switchTab('dashboard')">📊 Dashboard</button>
-        </div>
+        <!-- Category Sidebar -->
+        <aside class="category-sidebar" id="categorySidebar">
+            <div class="sidebar-header">
+                <span class="category-icon">📂</span>
+                <h3>Categories</h3>
+            </div>
+            <ul class="category-list" id="categoryList">
+                <li class="category-item all-categories active" data-category="all" onclick="filterByCategory('all')">
+                    <span class="category-name">All Products</span>
+                    <span class="category-count" id="allCount">0</span>
+                </li>
+                <!-- Categories will be populated dynamically -->
+            </ul>
+        </aside>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Tab Navigation -->
+            <div class="tab-nav">
+                <button class="tab-btn active" id="tabProducts" onclick="switchTab('products')">📦 Products</button>
+                <button class="tab-btn" id="tabAI" onclick="switchTab('ai')">🤖 AI Assistant</button>
+                <button class="tab-btn" id="tabDashboard" onclick="switchTab('dashboard')">📊 Dashboard</button>
+            </div>
 
         <!-- Products Tab Content -->
         <div id="productsTab" class="tab-content active">
@@ -1450,18 +1586,148 @@ HTML_TEMPLATE = """
                 </div>
             </div>
         </div>
+        </div><!-- End main-content -->
     </div>
 
     <script>
         let products = [];
+        let allProducts = [];  // Store all products for filtering
+        let filteredProducts = [];  // Currently filtered products
         let currentIndex = 0;
         let currentImageIndex = 0;
+        let currentCategory = 'all';  // Track selected category
         const useSupabase = {{ 'true' if use_supabase else 'false' }};
+
+        // Build category sidebar from products data
+        function buildCategorySidebar() {
+            const categoryList = document.getElementById('categoryList');
+            if (!categoryList || !allProducts.length) return;
+
+            // Count products per category
+            const categoryCounts = {};
+            allProducts.forEach(product => {
+                const category = product.category || 'Uncategorized';
+                categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+            });
+
+            // Update "All Products" count
+            document.getElementById('allCount').textContent = allProducts.length;
+
+            // Sort categories alphabetically
+            const sortedCategories = Object.keys(categoryCounts).sort();
+
+            // Clear existing category items (except "All Products")
+            const allCategoryItem = categoryList.querySelector('.all-categories');
+            categoryList.innerHTML = '';
+            categoryList.appendChild(allCategoryItem);
+
+            // Add category items
+            sortedCategories.forEach(category => {
+                const count = categoryCounts[category];
+                const li = document.createElement('li');
+                li.className = 'category-item';
+                li.setAttribute('data-category', category);
+                li.onclick = () => filterByCategory(category);
+
+                // Get category icon based on name
+                const icon = getCategoryIcon(category);
+
+                li.innerHTML = `
+                    <span class="category-name">${icon} ${formatCategoryName(category)}</span>
+                    <span class="category-count">${count}</span>
+                `;
+                categoryList.appendChild(li);
+            });
+        }
+
+        // Get icon for category
+        function getCategoryIcon(category) {
+            const icons = {
+                'shirts': '👔',
+                't-shirts': '👕',
+                'pants': '👖',
+                'jeans': '👖',
+                'shorts': '🩳',
+                'jackets': '🧥',
+                'coats': '🧥',
+                'suits': '🤵',
+                'blazers': '🤵',
+                'shoes': '👟',
+                'sneakers': '👟',
+                'boots': '🥾',
+                'accessories': '⌚',
+                'bags': '👜',
+                'hats': '🧢',
+                'sweaters': '🧶',
+                'hoodies': '🧥',
+                'underwear': '🩲',
+                'swimwear': '🩱',
+                'activewear': '🏃',
+                'default': '📦'
+            };
+            const lowerCategory = category.toLowerCase();
+            for (const [key, icon] of Object.entries(icons)) {
+                if (lowerCategory.includes(key)) return icon;
+            }
+            return icons.default;
+        }
+
+        // Format category name for display
+        function formatCategoryName(category) {
+            return category
+                .split(/[-_]/)
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                .join(' ');
+        }
+
+        // Filter products by category
+        function filterByCategory(category) {
+            currentCategory = category;
+
+            // Update active state in sidebar
+            document.querySelectorAll('.category-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.getAttribute('data-category') === category) {
+                    item.classList.add('active');
+                }
+            });
+
+            // Filter products
+            if (category === 'all') {
+                filteredProducts = [...allProducts];
+            } else {
+                filteredProducts = allProducts.filter(p => p.category === category);
+            }
+
+            // Update products array and reset to first product
+            products = filteredProducts;
+            currentIndex = 0;
+
+            if (products.length > 0) {
+                displayProduct(0);
+            } else {
+                document.getElementById('productCard').innerHTML = `
+                    <div class="no-data">
+                        <h2>No products in this category</h2>
+                        <p>Select a different category or view all products.</p>
+                    </div>
+                `;
+                document.getElementById('counter').textContent = 'No products';
+            }
+        }
 
         async function loadProducts() {
             try {
                 const response = await fetch('/api/products');
-                products = await response.json();
+                const data = await response.json();
+
+                // Store all products for filtering
+                allProducts = data;
+                filteredProducts = [...allProducts];
+                products = filteredProducts;
+
+                // Build the category sidebar
+                buildCategorySidebar();
 
                 if (products.length > 0) {
                     displayProduct(0);
@@ -1506,7 +1772,9 @@ HTML_TEMPLATE = """
             const product = products[index];
 
             // Update counter
-            document.getElementById('counter').textContent = `Product ${index + 1} of ${products.length}`;
+            // Update counter - show category filter if active
+            const categoryLabel = currentCategory === 'all' ? '' : ` in ${formatCategoryName(currentCategory)}`;
+            document.getElementById('counter').textContent = `Product ${index + 1} of ${products.length}${categoryLabel}`;
 
             // Update navigation buttons
             document.getElementById('prevBtn').disabled = index === 0;
@@ -2610,7 +2878,7 @@ HTML_TEMPLATE = """
                 if (data.error) {
                     statusDiv.innerHTML = `<span style="color: #c62828;">❌ ${data.error}</span>`;
                 } else if (data.tags && data.tags.length > 0) {
-                    statusDiv.innerHTML = `<span style="color: #0097a7;">✅ Generated ${data.tags.length} tags successfully!</span>`;
+                    statusDiv.innerHTML = `<span style="color: #0097a7;">✅ Generated ${data.tags.length} new tags!</span>`;
 
                     // Build the new AI tags and append them directly to the page without reloading
                     const newAITags = data.tags.map(tagValue => ({
@@ -2627,8 +2895,14 @@ HTML_TEMPLATE = """
                         const newTagsHtml = renderAIGeneratedTagsInline(newAITags);
                         styleTagsList.insertAdjacentHTML('beforeend', newTagsHtml);
                     }
+                } else if (data.filtered_duplicates > 0) {
+                    // AI generated tags but all were duplicates
+                    statusDiv.innerHTML = `<span style="color: #0097a7;">ℹ️ AI found ${data.original_count} tags, but all matched existing tags</span>`;
+                } else if (data.original_count === 0) {
+                    // AI couldn't generate any tags
+                    statusDiv.innerHTML = `<span style="color: #ff9800;">⚠️ AI couldn't identify style tags for this image</span>`;
                 } else {
-                    statusDiv.innerHTML = `<span style="color: #ff9800;">⚠️ No tags generated</span>`;
+                    statusDiv.innerHTML = `<span style="color: #ff9800;">⚠️ No new tags generated</span>`;
                 }
             } catch (error) {
                 console.error('Error generating AI tags:', error);
@@ -4288,7 +4562,9 @@ def ai_generate_tags():
                             .execute()
                         )
                         for ai_tag in existing_ai_result.data or []:
-                            existing_tags_lower.add(ai_tag["field_value"].lower().strip())
+                            existing_tags_lower.add(
+                                ai_tag["field_value"].lower().strip()
+                            )
                     except Exception:
                         pass  # Table might not exist yet
 
@@ -4311,15 +4587,20 @@ def ai_generate_tags():
                     )
 
                     # Filter out tags that already exist (case-insensitive comparison)
+                    filtered_count = 0
+                    original_tags = tags or []
                     if tags:
                         original_count = len(tags)
-                        tags = [tag for tag in tags if tag.lower().strip() not in existing_tags_lower]
+                        tags = [
+                            tag
+                            for tag in tags
+                            if tag.lower().strip() not in existing_tags_lower
+                        ]
                         filtered_count = original_count - len(tags)
                         if filtered_count > 0:
                             print(f"Filtered out {filtered_count} duplicate tags")
 
                     # Save tags to ai_generated_tags table (separate from inferred/curated)
-                    if tags:
                     if tags:
                         records = [
                             {
@@ -4337,7 +4618,12 @@ def ai_generate_tags():
                         except Exception as e:
                             print(f"Warning: Could not save AI tags to database: {e}")
 
-                    return {"tags": tags, "product_id": product_id}
+                    return {
+                        "tags": tags,
+                        "product_id": product_id,
+                        "filtered_duplicates": filtered_count,
+                        "original_count": len(original_tags)
+                    }
 
                 elif generate_all:
                     # Generate tags for all products without tags
@@ -4380,7 +4666,9 @@ def ai_generate_tags():
                                 .execute()
                             )
                             for ai_tag in existing_ai_result.data or []:
-                                existing_tags_lower.add(ai_tag["field_value"].lower().strip())
+                                existing_tags_lower.add(
+                                    ai_tag["field_value"].lower().strip()
+                                )
                         except Exception:
                             pass
 
@@ -4394,7 +4682,11 @@ def ai_generate_tags():
 
                         # Filter out duplicates
                         if tags:
-                            tags = [tag for tag in tags if tag.lower().strip() not in existing_tags_lower]
+                            tags = [
+                                tag
+                                for tag in tags
+                                if tag.lower().strip() not in existing_tags_lower
+                            ]
 
                         if tags:
                             # Save to ai_generated_tags table
