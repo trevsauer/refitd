@@ -35,11 +35,8 @@ AVAILABLE_CATEGORIES = {
     "jackets": {"url": "/us/en/man-jackets-l715.html", "desc": "Jackets & outerwear"},
     "blazers": {"url": "/us/en/man-blazers-l608.html", "desc": "Blazers & sport coats"},
     "suits": {"url": "/us/en/man-suits-l599.html", "desc": "Suits & formal wear"},
-    # Footwear & Accessories
+    # Footwear
     "shoes": {"url": "/us/en/man-shoes-l769.html", "desc": "All footwear"},
-    "bags": {"url": "/us/en/man-bags-l563.html", "desc": "Bags & backpacks"},
-    "accessories": {"url": "/us/en/man-accessories-l537.html", "desc": "Belts, hats, scarves, etc."},
-    "underwear": {"url": "/us/en/man-underwear-l789.html", "desc": "Underwear & socks"},
     # Discovery
     "new-in": {"url": "/us/en/man-new-in-l716.html", "desc": "New arrivals"},
 }

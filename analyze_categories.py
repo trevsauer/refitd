@@ -23,9 +23,6 @@ CATEGORIES = [
     {"name": "Blazers", "slug": "blazers", "url": "https://www.zara.com/us/en/man-blazers-l608.html"},
     {"name": "Suits", "slug": "suits", "url": "https://www.zara.com/us/en/man-suits-l599.html"},
     {"name": "Shoes", "slug": "shoes", "url": "https://www.zara.com/us/en/man-shoes-l769.html"},
-    {"name": "Bags", "slug": "bags", "url": "https://www.zara.com/us/en/man-bags-l563.html"},
-    {"name": "Accessories", "slug": "accessories", "url": "https://www.zara.com/us/en/man-accessories-l537.html"},
-    {"name": "Underwear", "slug": "underwear", "url": "https://www.zara.com/us/en/man-underwear-l789.html"},
     {"name": "New In", "slug": "new-in", "url": "https://www.zara.com/us/en/man-new-in-l716.html"},
 ]
 

@@ -1681,12 +1681,9 @@ HTML_TEMPLATE = """
                 'shoes': '👟',
                 'sneakers': '👟',
                 'boots': '🥾',
-                'accessories': '⌚',
-                'bags': '👜',
                 'hats': '🧢',
                 'sweaters': '🧶',
                 'hoodies': '🧥',
-                'underwear': '🩲',
                 'swimwear': '🩱',
                 'activewear': '🏃',
                 'default': '📦'
@@ -3149,11 +3146,8 @@ HTML_TEMPLATE = """
                                 <option value="blazers" selected>Blazers</option>
                                 <option value="suits" selected>Suits</option>
                             </optgroup>
-                            <optgroup label="Footwear & Accessories">
+                            <optgroup label="Footwear">
                                 <option value="shoes" selected>Shoes</option>
-                                <option value="bags" selected>Bags</option>
-                                <option value="accessories" selected>Accessories</option>
-                                <option value="underwear" selected>Underwear</option>
                             </optgroup>
                             <optgroup label="Discovery">
                                 <option value="new-in" selected>New In</option>
