@@ -213,8 +213,8 @@ python main.py --supabase --all
 ### Available Categories
 
 ```
-tshirts, shirts, pants, jeans, shorts, jackets, 
-coats, suits, knitwear, sweatshirts, polos, 
+tshirts, shirts, pants, jeans, shorts, jackets,
+coats, suits, knitwear, sweatshirts, polos,
 overshirts, waistcoats
 ```
 

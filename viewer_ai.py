@@ -1295,6 +1295,32 @@ HTML_TEMPLATE = """
                 display: none;
             }
 
+            /* Reset to Original Button */
+            .reset-metadata-btn {
+                background: linear-gradient(135deg, #ef5350, #c62828);
+                color: #fff;
+                border: none;
+                padding: 8px 14px;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.2s;
+                margin-left: 10px;
+            }
+
+            .reset-metadata-btn:hover {
+                background: linear-gradient(135deg, #f44336, #b71c1c);
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(198, 40, 40, 0.3);
+            }
+
+            .reset-metadata-btn:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+                transform: none;
+            }
+
             /* AI Generated Tag Styling - Teal/Cyan color */
             .ai-generated-tag {
                 background: linear-gradient(135deg, #00bcd4, #0097a7) !important;
@@ -2051,6 +2077,7 @@ HTML_TEMPLATE = """
                                 <span class="spinner"></span>
                             <span class="btn-text">🤖 AI Generate</span>
                             </button>
+                            <button class="reset-metadata-btn" onclick="resetProductMetadata('${product.product_id}')" title="Remove all curated and AI-generated tags, restore to original scraped data">🔄 Reset to Original</button>
                         </h3>
                         <div class="tag-list" id="styleTagsList">${styleTags}${renderCuratedTagsInline(curatedTags)}${renderAIGeneratedTagsInline(aiGeneratedTags)}</div>
                     ` : `
@@ -2060,6 +2087,7 @@ HTML_TEMPLATE = """
                                 <span class="spinner"></span>
                                 <span class="btn-text">🤖 AI Generate</span>
                             </button>
+                            <button class="reset-metadata-btn" onclick="resetProductMetadata('${product.product_id}')" title="Remove all curated and AI-generated tags, restore to original scraped data">🔄 Reset to Original</button>
                         </h3>
                         <div class="tag-list" id="styleTagsList">${renderAIGeneratedTagsInline(aiGeneratedTags) || '<span style="color:#999;font-size:13px;">No style tags</span>'}</div>
                     `}
@@ -2908,9 +2936,46 @@ HTML_TEMPLATE = """
                 console.error('Error generating AI tags:', error);
                 statusDiv.innerHTML = `<span style="color: #c62828;">❌ Error: ${error.message}</span>`;
             } finally {
-                // Reset button state
+            // Reset button state
                 btn.classList.remove('loading');
                 btn.disabled = false;
+            }
+        }
+
+        // Reset product metadata to original scraped state
+        async function resetProductMetadata(productId) {
+            if (!confirm('This will remove all curated tags, AI-generated tags, and manual changes for this product. The product will be restored to its original scraped state. Continue?')) {
+                return;
+            }
+
+            const statusDiv = document.getElementById('aiTagsStatus');
+            if (statusDiv) {
+                statusDiv.innerHTML = '<span style="color: #ef5350;">🔄 Resetting to original state...</span>';
+            }
+
+            try {
+                const response = await fetch('/api/reset-metadata/' + productId, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    if (statusDiv) {
+                        statusDiv.innerHTML = '<span style="color: #c62828;">❌ ' + data.error + '</span>';
+                    }
+                } else {
+                    if (statusDiv) {
+                        statusDiv.innerHTML = '<span style="color: #4caf50;">✅ Reset complete! Removed ' + (data.curated_deleted || 0) + ' curated and ' + (data.ai_deleted || 0) + ' AI tags</span>';
+                    }
+                    // Refresh the product display
+                    await displayProduct(currentIndex);
+                }
+            } catch (error) {
+                console.error('Error resetting metadata:', error);
+                if (statusDiv) {
+                    statusDiv.innerHTML = '<span style="color: #c62828;">❌ Error: ' + error.message + '</span>';
+                }
             }
         }
 
@@ -3840,6 +3905,90 @@ def delete_product(product_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/reset-metadata/<product_id>", methods=["DELETE"])
+def reset_product_metadata(product_id):
+    """Reset a product's metadata to its original scraped state.
+
+    This removes:
+    - All curated_metadata entries for this product
+    - All ai_generated_tags entries for this product
+    - All rejected_tags entries for this product
+    - The curation_status entry for this product
+
+    The original scraped product data (including inferred style_tags) remains unchanged.
+    """
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    try:
+        curated_deleted = 0
+        ai_deleted = 0
+        rejected_deleted = 0
+        status_deleted = 0
+
+        # Delete curated metadata
+        try:
+            result = (
+                supabase_client.table("curated_metadata")
+                .delete()
+                .eq("product_id", product_id)
+                .execute()
+            )
+            curated_deleted = len(result.data) if result.data else 0
+        except Exception as e:
+            print(f"Note: Could not delete curated_metadata: {e}")
+
+        # Delete AI-generated tags
+        try:
+            result = (
+                supabase_client.table("ai_generated_tags")
+                .delete()
+                .eq("product_id", product_id)
+                .execute()
+            )
+            ai_deleted = len(result.data) if result.data else 0
+        except Exception as e:
+            print(f"Note: Could not delete ai_generated_tags: {e}")
+
+        # Delete rejected tags
+        try:
+            result = (
+                supabase_client.table("rejected_tags")
+                .delete()
+                .eq("product_id", product_id)
+                .execute()
+            )
+            rejected_deleted = len(result.data) if result.data else 0
+        except Exception as e:
+            print(f"Note: Could not delete rejected_tags: {e}")
+
+        # Delete curation status
+        try:
+            result = (
+                supabase_client.table("curation_status")
+                .delete()
+                .eq("product_id", product_id)
+                .execute()
+            )
+            status_deleted = len(result.data) if result.data else 0
+        except Exception as e:
+            print(f"Note: Could not delete curation_status: {e}")
+
+        return jsonify(
+            {
+                "success": True,
+                "message": f"Product {product_id} reset to original state",
+                "curated_deleted": curated_deleted,
+                "ai_deleted": ai_deleted,
+                "rejected_deleted": rejected_deleted,
+                "status_deleted": status_deleted,
+            }
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/curated", methods=["POST"])
 def save_curated_metadata():
     """Save a curated metadata entry to the database."""
@@ -4586,6 +4735,17 @@ def ai_generate_tags():
                         product_description=product.get("description", ""),
                     )
 
+                    # First, deduplicate within the generated tags themselves (case-insensitive)
+                    if tags:
+                        seen = set()
+                        unique_tags = []
+                        for tag in tags:
+                            tag_lower = tag.lower().strip()
+                            if tag_lower not in seen:
+                                seen.add(tag_lower)
+                                unique_tags.append(tag)
+                        tags = unique_tags
+
                     # Filter out tags that already exist (case-insensitive comparison)
                     filtered_count = 0
                     original_tags = tags or []
@@ -4622,7 +4782,7 @@ def ai_generate_tags():
                         "tags": tags,
                         "product_id": product_id,
                         "filtered_duplicates": filtered_count,
-                        "original_count": len(original_tags)
+                        "original_count": len(original_tags),
                     }
 
                 elif generate_all:
