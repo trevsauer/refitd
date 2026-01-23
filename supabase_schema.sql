@@ -306,3 +306,45 @@ SELECT
     COUNT(DISTINCT field_value) as unique_tags
 FROM ai_generated_tags
 GROUP BY model_name;
+
+-- ============================================
+-- CUSTOM VOCABULARY TABLE
+-- ============================================
+-- Stores user-defined vocabulary terms that extend the default AI tag vocabulary.
+-- These custom tags are merged with the built-in vocabulary when the AI generates tags.
+-- This allows users to add new style terms or create entirely new categories
+-- without modifying the source code.
+
+CREATE TABLE IF NOT EXISTS custom_vocabulary (
+    id SERIAL PRIMARY KEY,
+    category TEXT NOT NULL,  -- Category name (e.g., 'aesthetic', 'vibe', 'mood')
+    tag TEXT NOT NULL,  -- The vocabulary term
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Prevent duplicate tags in the same category
+    UNIQUE(category, tag)
+);
+
+-- Indexes for fast lookups
+CREATE INDEX IF NOT EXISTS idx_custom_vocab_category ON custom_vocabulary(category);
+CREATE INDEX IF NOT EXISTS idx_custom_vocab_tag ON custom_vocabulary(tag);
+
+-- Enable RLS with full access policy
+ALTER TABLE custom_vocabulary ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all access to custom_vocabulary" ON custom_vocabulary
+    FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================
+-- VIEW: Full Vocabulary (Built-in + Custom)
+-- ============================================
+-- Note: The built-in vocabulary is defined in Python code (src/ai/style_tagger.py).
+-- This view shows only custom additions. The application merges these at runtime.
+
+CREATE OR REPLACE VIEW custom_vocabulary_summary AS
+SELECT
+    category,
+    COUNT(*) as tag_count,
+    array_agg(tag ORDER BY tag) as tags
+FROM custom_vocabulary
+GROUP BY category
+ORDER BY category;

@@ -3787,10 +3787,471 @@ HTML_TEMPLATE = """
                 }
             } catch (error) {
                 console.error('Error unmarking:', error);
-                alert('Error removing completion status');
+            alert('Error removing completion status');
             }
         }
+
+        // ============================================
+        // VOCABULARY MANAGEMENT
+        // ============================================
+
+        async function loadCustomVocabulary() {
+            try {
+                const response = await fetch('/api/vocabulary');
+                const result = await response.json();
+
+                if (result.success) {
+                    displayCustomVocabulary(result.vocabulary);
+                    updateCategoryDropdown(result.vocabulary);
+                } else {
+                    document.getElementById('customVocabList').innerHTML = '<em style="color: #666;">No custom vocabulary yet</em>';
+                }
+            } catch (error) {
+                console.error('Error loading vocabulary:', error);
+                document.getElementById('customVocabList').innerHTML = '<em style="color: #ff6b6b;">Error loading vocabulary</em>';
+            }
+        }
+
+        function displayCustomVocabulary(vocabulary) {
+            const container = document.getElementById('customVocabList');
+
+            if (!vocabulary || Object.keys(vocabulary).length === 0) {
+                container.innerHTML = '<em style="color: #666;">No custom vocabulary yet. Add tags above to extend the AI vocabulary.</em>';
+                return;
+            }
+
+            let html = '<div style="display: flex; flex-wrap: wrap; gap: 15px;">';
+
+            for (const [category, tags] of Object.entries(vocabulary)) {
+                if (tags && tags.length > 0) {
+                    html += `
+                        <div style="background: rgba(100, 181, 246, 0.1); padding: 10px 15px; border-radius: 8px; border-left: 3px solid #64b5f6;">
+                            <strong style="color: #64b5f6; text-transform: capitalize;">${category.replace('_', ' ')}:</strong>
+                            <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                                ${tags.map(tag => `
+                                    <span style="background: rgba(0,212,170,0.2); color: #00d4aa; padding: 3px 8px; border-radius: 4px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;">
+                                        ${tag}
+                                        <span onclick="deleteVocabTag('${category}', '${tag}')" style="cursor: pointer; opacity: 0.7; font-size: 14px;" title="Remove tag">×</span>
+                                    </span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function updateCategoryDropdown(vocabulary) {
+            const dropdown = document.getElementById('vocabCategory');
+            if (!dropdown) return;
+
+            // Add custom categories to dropdown
+            if (vocabulary) {
+                for (const category of Object.keys(vocabulary)) {
+                    // Check if category already exists in dropdown
+                    const exists = Array.from(dropdown.options).some(opt => opt.value === category);
+                    if (!exists) {
+                        const option = document.createElement('option');
+                        option.value = category;
+                        option.textContent = category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        dropdown.appendChild(option);
+                    }
+                }
+            }
+        }
+
+        async function addVocabTag() {
+            const category = document.getElementById('vocabCategory').value;
+            const tag = document.getElementById('vocabNewTag').value.trim().toLowerCase();
+
+            if (!tag) {
+                alert('Please enter a tag');
+                return;
+            }
+
+            if (!/^[a-z][a-z0-9-]*$/.test(tag)) {
+                alert('Tags must start with a letter and contain only lowercase letters, numbers, and hyphens');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/vocabulary/tag', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category, tag })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    document.getElementById('vocabNewTag').value = '';
+                    loadCustomVocabulary();
+                    alert(`Tag "${tag}" added to ${category}!`);
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error adding tag:', error);
+                alert('Error adding tag');
+            }
+        }
+
+        async function createVocabCategory() {
+            const categoryName = document.getElementById('newCategoryName').value.trim().toLowerCase().replace(/\s+/g, '_');
+            const tagsInput = document.getElementById('newCategoryTags').value.trim();
+
+            if (!categoryName) {
+                alert('Please enter a category name');
+                return;
+            }
+
+            if (!/^[a-z][a-z0-9_]*$/.test(categoryName)) {
+                alert('Category name must start with a letter and contain only lowercase letters, numbers, and underscores');
+                return;
+            }
+
+            const tags = tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+
+            if (tags.length === 0) {
+                alert('Please enter at least one initial tag');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/vocabulary/category', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category: categoryName, tags })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    document.getElementById('newCategoryName').value = '';
+                    document.getElementById('newCategoryTags').value = '';
+                    loadCustomVocabulary();
+                    alert(`Category "${categoryName}" created with ${tags.length} tags!`);
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error creating category:', error);
+                alert('Error creating category');
+            }
+        }
+
+        async function deleteVocabTag(category, tag) {
+            if (!confirm(`Remove "${tag}" from ${category}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/vocabulary/tag', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category, tag })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    loadCustomVocabulary();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error deleting tag:', error);
+                alert('Error deleting tag');
+            }
+        }
+
+        // Load custom vocabulary when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Delay loading to ensure other elements are ready
+            setTimeout(loadCustomVocabulary, 1000);
+        });
     </script>
+
+    <!-- AI Technology Documentation Section -->
+    <div id="aiDocumentation" style="
+        max-width: 900px;
+        margin: 60px auto 40px auto;
+        padding: 30px;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #e0e0e0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    ">
+        <h2 style="
+            color: #00d4aa;
+            margin-bottom: 25px;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        ">
+            🤖 AI Technology Documentation
+        </h2>
+
+        <!-- Model Overview -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                📦 AI Model: Moondream
+            </h3>
+            <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 10px;">
+                This application uses <strong style="color: #fff;">Moondream</strong>, a lightweight vision-language model
+                specifically designed for efficient image understanding tasks. Moondream is an open-source model that runs
+                locally on your machine through <strong style="color: #fff;">Ollama</strong>, a local AI inference server.
+            </p>
+        </div>
+
+        <!-- Why Moondream -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                🎯 Why Moondream Was Selected
+            </h3>
+            <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
+                <li><strong style="color: #fff;">Lightweight & Fast:</strong> Moondream is optimized for speed, making it ideal for processing multiple product images without long wait times.</li>
+                <li><strong style="color: #fff;">Privacy-First:</strong> Runs entirely on your local machine—no product images or data are sent to external servers.</li>
+                <li><strong style="color: #fff;">Vision-Specialized:</strong> Unlike general-purpose LLMs, Moondream is specifically trained for visual understanding tasks.</li>
+                <li><strong style="color: #fff;">No API Costs:</strong> Being a local model, there are no per-request API charges or rate limits.</li>
+                <li><strong style="color: #fff;">Consistent Results:</strong> Low temperature settings (0.3) ensure reproducible, reliable tag generation.</li>
+            </ul>
+        </div>
+
+        <!-- What It's Good At -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                ✨ What Moondream Excels At
+            </h3>
+            <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
+                <li><strong style="color: #fff;">Visual Feature Extraction:</strong> Identifying patterns, colors, textures, and materials in clothing images.</li>
+                <li><strong style="color: #fff;">Style Classification:</strong> Categorizing garments by aesthetic (minimal, streetwear, formal, etc.).</li>
+                <li><strong style="color: #fff;">Fit Recognition:</strong> Detecting silhouettes like slim, oversized, relaxed, or tailored fits.</li>
+                <li><strong style="color: #fff;">Detail Detection:</strong> Spotting specific features like collars, pockets, zippers, and embroidery.</li>
+                <li><strong style="color: #fff;">Context Understanding:</strong> Combining visual analysis with product name context for more accurate tags.</li>
+            </ul>
+        </div>
+
+        <!-- What It Actually Does -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                ⚙️ How It Works In This Application
+            </h3>
+            <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; margin-bottom: 15px;">
+                <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                    When you click the <span style="background: linear-gradient(135deg, #00d4aa, #00a896); color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 500;">✨ AI Generate</span> button, the following process occurs:
+                </p>
+                <ol style="line-height: 1.9; color: #b0b0b0; padding-left: 20px;">
+                    <li><strong style="color: #fff;">Image Retrieval:</strong> The product's primary image is fetched from Supabase Storage.</li>
+                    <li><strong style="color: #fff;">Prompt Construction:</strong> A structured prompt is built combining the image with the product name and description.</li>
+                    <li><strong style="color: #fff;">Vision Analysis:</strong> Moondream analyzes the image and generates descriptive tags based on what it sees.</li>
+                    <li><strong style="color: #fff;">Vocabulary Filtering:</strong> The AI's raw output is filtered against the curated vocabulary (see below). Only tags that exist in the vocabulary are kept—this ensures consistency.</li>
+                    <li><strong style="color: #fff;">Validation:</strong> Filtered tags are deduplicated and normalized (lowercase, trimmed).</li>
+                    <li><strong style="color: #fff;">Duplicate Prevention:</strong> Generated tags are compared against existing inferred tags and previously generated AI tags to avoid repeats.</li>
+                    <li><strong style="color: #fff;">Storage:</strong> New, unique tags are saved to the <code style="background: #2d3748; padding: 2px 6px; border-radius: 4px;">ai_generated_tags</code> table in Supabase.</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- Vocabulary Explanation -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                📚 The Curated Vocabulary System
+            </h3>
+            <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; margin-bottom: 15px;">
+                <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                    <strong style="color: #fff;">Important:</strong> The ~86 style tags are <em>not</em> learned or generated by the AI model itself.
+                    They are a <strong style="color: #00d4aa;">manually curated vocabulary</strong> defined by developers to ensure consistent,
+                    controlled tagging across all products.
+                </p>
+                <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                    <strong style="color: #fff;">How it works:</strong>
+                </p>
+                <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px; margin-bottom: 15px;">
+                    <li>Moondream analyzes the image and outputs <em>any</em> descriptive tags it thinks are relevant</li>
+                    <li>The system then filters these through the vocabulary whitelist</li>
+                    <li>Only tags that match the curated vocabulary are accepted</li>
+                    <li>This prevents inconsistent or unusable tags like "nice-looking" or "blue-ish"</li>
+                </ul>
+                <p style="line-height: 1.7; color: #b0b0b0;">
+                    <strong style="color: #fff;">Why curate?</strong> A controlled vocabulary ensures that:
+                </p>
+                <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
+                    <li>Tags are consistent across all products (no "casual" vs "chill" variations)</li>
+                    <li>Search and filtering work reliably</li>
+                    <li>Tags are meaningful for fashion categorization</li>
+                    <li>The system can be extended with new tags as needed (see Vocabulary Manager below)</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Tag Categories -->
+        <div style="margin-bottom: 15px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                🏷️ Style Tag Categories
+            </h3>
+            <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                The AI generates tags from these predefined categories to ensure consistency:
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                <div style="background: rgba(100, 181, 246, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #64b5f6;">
+                    <strong style="color: #64b5f6;">Aesthetic:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> minimal, streetwear, preppy, vintage...</span>
+                </div>
+                <div style="background: rgba(129, 199, 132, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #81c784;">
+                    <strong style="color: #81c784;">Fit:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> slim, relaxed, oversized, tailored...</span>
+                </div>
+                <div style="background: rgba(255, 183, 77, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #ffb74d;">
+                    <strong style="color: #ffb74d;">Pattern:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> solid, striped, plaid, graphic...</span>
+                </div>
+                <div style="background: rgba(186, 104, 200, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #ba68c8;">
+                    <strong style="color: #ba68c8;">Material:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> cotton, denim, linen, wool...</span>
+                </div>
+                <div style="background: rgba(255, 138, 128, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #ff8a80;">
+                    <strong style="color: #ff8a80;">Season:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> summer, winter, all-season...</span>
+                </div>
+                <div style="background: rgba(79, 195, 247, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #4fc3f7;">
+                    <strong style="color: #4fc3f7;">Occasion:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> casual, formal, athletic, lounge...</span>
+                </div>
+                <div style="background: rgba(174, 213, 129, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #aed581;">
+                    <strong style="color: #aed581;">Color Mood:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> neutral, bold, muted, pastel...</span>
+                </div>
+                <div style="background: rgba(240, 98, 146, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #f06292;">
+                    <strong style="color: #f06292;">Details:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> pocket, collar, hood, distressed...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vocabulary Manager -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                🛠️ Vocabulary Manager
+            </h3>
+            <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                Extend the AI vocabulary by adding new tags to existing categories or creating entirely new categories.
+                Custom vocabulary is stored in Supabase and merged with the default tags.
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <!-- Add Tag to Existing Category -->
+                <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px;">
+                    <h4 style="color: #81c784; margin-bottom: 15px; font-size: 15px;">➕ Add Tag to Category</h4>
+                    <div style="margin-bottom: 12px;">
+                        <label style="color: #b0b0b0; font-size: 13px; display: block; margin-bottom: 5px;">Category:</label>
+                        <select id="vocabCategory" style="
+                            width: 100%;
+                            padding: 10px;
+                            border-radius: 6px;
+                            border: 1px solid rgba(255,255,255,0.2);
+                            background: #1a1a2e;
+                            color: #fff;
+                            font-size: 14px;
+                        ">
+                            <option value="aesthetic">Aesthetic</option>
+                            <option value="fit">Fit</option>
+                            <option value="pattern">Pattern</option>
+                            <option value="material_feel">Material</option>
+                            <option value="season">Season</option>
+                            <option value="occasion">Occasion</option>
+                            <option value="color_mood">Color Mood</option>
+                            <option value="details">Details</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="color: #b0b0b0; font-size: 13px; display: block; margin-bottom: 5px;">New Tag:</label>
+                        <input type="text" id="vocabNewTag" placeholder="e.g., cyberpunk" style="
+                            width: 100%;
+                            padding: 10px;
+                            border-radius: 6px;
+                            border: 1px solid rgba(255,255,255,0.2);
+                            background: #1a1a2e;
+                            color: #fff;
+                            font-size: 14px;
+                            box-sizing: border-box;
+                        ">
+                    </div>
+                    <button onclick="addVocabTag()" style="
+                        background: linear-gradient(135deg, #81c784, #4caf50);
+                        color: #000;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 6px;
+                        cursor: pointer;
+                        font-weight: 500;
+                        width: 100%;
+                    ">Add Tag</button>
+                </div>
+
+                <!-- Create New Category -->
+                <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px;">
+                    <h4 style="color: #ba68c8; margin-bottom: 15px; font-size: 15px;">📁 Create New Category</h4>
+                    <div style="margin-bottom: 12px;">
+                        <label style="color: #b0b0b0; font-size: 13px; display: block; margin-bottom: 5px;">Category Name:</label>
+                        <input type="text" id="newCategoryName" placeholder="e.g., vibe" style="
+                            width: 100%;
+                            padding: 10px;
+                            border-radius: 6px;
+                            border: 1px solid rgba(255,255,255,0.2);
+                            background: #1a1a2e;
+                            color: #fff;
+                            font-size: 14px;
+                            box-sizing: border-box;
+                        ">
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="color: #b0b0b0; font-size: 13px; display: block; margin-bottom: 5px;">Initial Tags (comma-separated):</label>
+                        <input type="text" id="newCategoryTags" placeholder="e.g., cozy, edgy, playful" style="
+                            width: 100%;
+                            padding: 10px;
+                            border-radius: 6px;
+                            border: 1px solid rgba(255,255,255,0.2);
+                            background: #1a1a2e;
+                            color: #fff;
+                            font-size: 14px;
+                            box-sizing: border-box;
+                        ">
+                    </div>
+                    <button onclick="createVocabCategory()" style="
+                        background: linear-gradient(135deg, #ba68c8, #9c27b0);
+                        color: #fff;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 6px;
+                        cursor: pointer;
+                        font-weight: 500;
+                        width: 100%;
+                    ">Create Category</button>
+                </div>
+            </div>
+
+            <!-- Current Custom Vocabulary Display -->
+            <div id="customVocabDisplay" style="margin-top: 20px; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px;">
+                <h4 style="color: #64b5f6; margin-bottom: 15px; font-size: 15px;">📋 Custom Vocabulary</h4>
+                <div id="customVocabList" style="color: #b0b0b0; font-size: 13px;">
+                    <em>Loading custom vocabulary...</em>
+                </div>
+            </div>
+        </div>
+
+        <!-- Technical Stack Footer -->
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); text-align: center;">
+            <p style="color: #666; font-size: 13px;">
+                <strong>Tech Stack:</strong> Ollama (local inference) • Moondream (vision model) • Supabase (storage) • Python/Flask (backend)
+            </p>
+        </div>
+    </div>
 </body>
 </html>
 """
@@ -4675,7 +5136,10 @@ def ai_generate_tags():
                 if not await client.is_available():
                     return {"error": "Ollama is not running. Start with: ollama serve"}
 
-                tagger = StyleTagger(ollama_client=client)
+                # Pass supabase_client to load custom vocabulary
+                tagger = StyleTagger(
+                    ollama_client=client, supabase_client=supabase_client
+                )
 
                 if product_id:
                     # Generate tags for a single product
@@ -4924,6 +5388,155 @@ def ai_chat():
         return jsonify({"error": f"AI modules not available: {e}"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# VOCABULARY MANAGEMENT ENDPOINTS
+# ============================================
+
+
+@app.route("/api/vocabulary", methods=["GET"])
+def get_vocabulary():
+    """Get all custom vocabulary from the database."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"success": False, "error": "Supabase not configured"}), 400
+
+    try:
+        result = supabase_client.table("custom_vocabulary").select("*").execute()
+
+        # Group by category
+        vocabulary = {}
+        for item in result.data or []:
+            category = item.get("category")
+            tag = item.get("tag")
+            if category and tag:
+                if category not in vocabulary:
+                    vocabulary[category] = []
+                vocabulary[category].append(tag)
+
+        return jsonify({"success": True, "vocabulary": vocabulary})
+
+    except Exception as e:
+        # Table might not exist yet
+        if "relation" in str(e).lower() and "does not exist" in str(e).lower():
+            return jsonify({"success": True, "vocabulary": {}})
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/vocabulary/tag", methods=["POST"])
+def add_vocabulary_tag():
+    """Add a new tag to an existing or new category."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"success": False, "error": "Supabase not configured"}), 400
+
+    data = request.get_json() or {}
+    category = data.get("category", "").strip().lower()
+    tag = data.get("tag", "").strip().lower()
+
+    if not category or not tag:
+        return (
+            jsonify({"success": False, "error": "Category and tag are required"}),
+            400,
+        )
+
+    try:
+        # Insert the new tag
+        supabase_client.table("custom_vocabulary").upsert(
+            {"category": category, "tag": tag}, on_conflict="category,tag"
+        ).execute()
+
+        return jsonify(
+            {"success": True, "message": f"Tag '{tag}' added to '{category}'"}
+        )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/vocabulary/tag", methods=["DELETE"])
+def delete_vocabulary_tag():
+    """Delete a tag from a category."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"success": False, "error": "Supabase not configured"}), 400
+
+    data = request.get_json() or {}
+    category = data.get("category", "").strip().lower()
+    tag = data.get("tag", "").strip().lower()
+
+    if not category or not tag:
+        return (
+            jsonify({"success": False, "error": "Category and tag are required"}),
+            400,
+        )
+
+    try:
+        supabase_client.table("custom_vocabulary").delete().eq("category", category).eq(
+            "tag", tag
+        ).execute()
+
+        return jsonify(
+            {"success": True, "message": f"Tag '{tag}' removed from '{category}'"}
+        )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/vocabulary/category", methods=["POST"])
+def create_vocabulary_category():
+    """Create a new category with initial tags."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"success": False, "error": "Supabase not configured"}), 400
+
+    data = request.get_json() or {}
+    category = data.get("category", "").strip().lower()
+    tags = data.get("tags", [])
+
+    if not category:
+        return jsonify({"success": False, "error": "Category name is required"}), 400
+
+    if not tags or not isinstance(tags, list):
+        return jsonify({"success": False, "error": "At least one tag is required"}), 400
+
+    try:
+        # Insert all tags for the new category
+        records = [
+            {"category": category, "tag": tag.strip().lower()}
+            for tag in tags
+            if tag.strip()
+        ]
+
+        if records:
+            supabase_client.table("custom_vocabulary").upsert(
+                records, on_conflict="category,tag"
+            ).execute()
+
+        return jsonify(
+            {
+                "success": True,
+                "message": f"Category '{category}' created with {len(records)} tags",
+            }
+        )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/vocabulary/category/<category>", methods=["DELETE"])
+def delete_vocabulary_category(category):
+    """Delete an entire custom category."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"success": False, "error": "Supabase not configured"}), 400
+
+    try:
+        supabase_client.table("custom_vocabulary").delete().eq(
+            "category", category.lower()
+        ).execute()
+
+        return jsonify({"success": True, "message": f"Category '{category}' deleted"})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/images/<category>/<product_id>/<filename>")

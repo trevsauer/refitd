@@ -15,8 +15,8 @@ Usage:
 import asyncio
 import json
 import re
-from typing import Optional
 from dataclasses import dataclass, field
+from typing import Any, Optional
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -27,38 +27,110 @@ console = Console()
 
 
 # Predefined style vocabulary for consistent tagging
+# This is the built-in default vocabulary. Users can extend this via the
+# custom_vocabulary table in Supabase using the Vocabulary Manager UI.
 STYLE_CATEGORIES = {
     "aesthetic": [
-        "minimal", "maximalist", "classic", "modern", "vintage", "retro",
-        "bohemian", "streetwear", "preppy", "athleisure", "grunge",
-        "smart-casual", "formal", "business", "workwear", "loungewear",
+        "minimal",
+        "maximalist",
+        "classic",
+        "modern",
+        "vintage",
+        "retro",
+        "bohemian",
+        "streetwear",
+        "preppy",
+        "athleisure",
+        "grunge",
+        "smart-casual",
+        "formal",
+        "business",
+        "workwear",
+        "loungewear",
     ],
     "fit": [
-        "slim", "regular", "relaxed", "oversized", "tailored", "fitted",
-        "loose", "cropped", "longline", "boxy",
+        "slim",
+        "regular",
+        "relaxed",
+        "oversized",
+        "tailored",
+        "fitted",
+        "loose",
+        "cropped",
+        "longline",
+        "boxy",
     ],
     "pattern": [
-        "solid", "striped", "checked", "plaid", "printed", "graphic",
-        "floral", "geometric", "abstract", "camo", "tie-dye",
+        "solid",
+        "striped",
+        "checked",
+        "plaid",
+        "printed",
+        "graphic",
+        "floral",
+        "geometric",
+        "abstract",
+        "camo",
+        "tie-dye",
     ],
     "material_feel": [
-        "cotton", "linen", "denim", "leather", "wool", "synthetic",
-        "knit", "woven", "jersey", "fleece", "corduroy", "satin",
+        "cotton",
+        "linen",
+        "denim",
+        "leather",
+        "wool",
+        "synthetic",
+        "knit",
+        "woven",
+        "jersey",
+        "fleece",
+        "corduroy",
+        "satin",
     ],
     "season": [
-        "summer", "winter", "spring", "fall", "all-season", "transitional",
+        "summer",
+        "winter",
+        "spring",
+        "fall",
+        "all-season",
+        "transitional",
     ],
     "occasion": [
-        "casual", "formal", "business", "party", "beach", "outdoor",
-        "athletic", "lounge", "date-night", "travel", "everyday",
+        "casual",
+        "formal",
+        "business",
+        "party",
+        "beach",
+        "outdoor",
+        "athletic",
+        "lounge",
+        "date-night",
+        "travel",
+        "everyday",
     ],
     "color_mood": [
-        "neutral", "bold", "muted", "earthy", "pastel", "monochrome",
-        "colorful", "dark", "light", "vibrant",
+        "neutral",
+        "bold",
+        "muted",
+        "earthy",
+        "pastel",
+        "monochrome",
+        "colorful",
+        "dark",
+        "light",
+        "vibrant",
     ],
     "details": [
-        "pocket", "zip", "button", "collar", "hood", "logo",
-        "embroidered", "distressed", "raw-hem", "pleated",
+        "pocket",
+        "zip",
+        "button",
+        "collar",
+        "hood",
+        "logo",
+        "embroidered",
+        "distressed",
+        "raw-hem",
+        "pleated",
     ],
 }
 
@@ -66,6 +138,74 @@ STYLE_CATEGORIES = {
 ALL_VALID_TAGS = set()
 for category_tags in STYLE_CATEGORIES.values():
     ALL_VALID_TAGS.update(category_tags)
+
+
+def load_custom_vocabulary(supabase_client: Any) -> dict[str, list[str]]:
+    """
+    Load custom vocabulary from Supabase.
+
+    Args:
+        supabase_client: Supabase client instance
+
+    Returns:
+        Dictionary of category -> list of tags
+    """
+    if not supabase_client:
+        return {}
+
+    try:
+        result = supabase_client.table("custom_vocabulary").select("*").execute()
+
+        vocabulary = {}
+        for item in result.data or []:
+            category = item.get("category")
+            tag = item.get("tag")
+            if category and tag:
+                if category not in vocabulary:
+                    vocabulary[category] = []
+                vocabulary[category].append(tag)
+
+        return vocabulary
+    except Exception as e:
+        console.print(f"[yellow]Could not load custom vocabulary: {e}[/yellow]")
+        return {}
+
+
+def get_merged_vocabulary(
+    supabase_client: Any = None,
+) -> tuple[dict[str, list[str]], set[str]]:
+    """
+    Get the merged vocabulary (built-in + custom).
+
+    Args:
+        supabase_client: Optional Supabase client for loading custom vocabulary
+
+    Returns:
+        Tuple of (category dict, flattened set of all valid tags)
+    """
+    # Start with built-in vocabulary (deep copy)
+    merged = {k: list(v) for k, v in STYLE_CATEGORIES.items()}
+
+    # Load and merge custom vocabulary
+    custom = load_custom_vocabulary(supabase_client)
+
+    for category, tags in custom.items():
+        if category in merged:
+            # Add to existing category (avoid duplicates)
+            existing = set(merged[category])
+            for tag in tags:
+                if tag not in existing:
+                    merged[category].append(tag)
+        else:
+            # New custom category
+            merged[category] = list(tags)
+
+    # Flatten for validation
+    all_tags = set()
+    for category_tags in merged.values():
+        all_tags.update(category_tags)
+
+    return merged, all_tags
 
 
 @dataclass
@@ -104,16 +244,27 @@ class StyleTagger:
 
     Uses Moondream (or other vision model) to analyze product images
     and generate relevant style tags for categorization and search.
+
+    The tagger validates generated tags against a vocabulary that combines:
+    - Built-in default tags (defined in STYLE_CATEGORIES)
+    - Custom user-defined tags (loaded from Supabase custom_vocabulary table)
     """
 
     def __init__(
         self,
         ollama_client: Optional[OllamaClient] = None,
         config: Optional[TaggingConfig] = None,
+        supabase_client: Any = None,
     ):
         self.client = ollama_client
         self.config = config or TaggingConfig()
         self._owns_client = ollama_client is None
+        self.supabase_client = supabase_client
+
+        # Load merged vocabulary (built-in + custom)
+        self._style_categories, self._valid_tags = get_merged_vocabulary(
+            supabase_client
+        )
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -182,7 +333,7 @@ class StyleTagger:
             if len(tags) < self.config.min_tags:
                 tags = self._augment_tags(tags, product_name)
 
-            return tags[:self.config.max_tags]
+            return tags[: self.config.max_tags]
 
         except Exception as e:
             console.print(f"[red]Error generating tags: {e}[/red]")
@@ -218,7 +369,9 @@ class StyleTagger:
 
                 for product in products:
                     product_id = product.get("id", product.get("product_id", ""))
-                    image_url = product.get("image_url", product.get("primary_image", ""))
+                    image_url = product.get(
+                        "image_url", product.get("primary_image", "")
+                    )
                     name = product.get("name", "")
                     description = product.get("description", "")
 
@@ -257,7 +410,7 @@ class StyleTagger:
         # Try to find JSON array in response
         try:
             # Look for array pattern
-            match = re.search(r'\[([^\]]+)\]', response)
+            match = re.search(r"\[([^\]]+)\]", response)
             if match:
                 array_str = f"[{match.group(1)}]"
                 tags = json.loads(array_str)
@@ -267,26 +420,28 @@ class StyleTagger:
             pass
 
         # Fallback: extract words that look like tags
-        words = re.findall(r'[a-z][a-z-]+', response.lower())
-        potential_tags = [w for w in words if w in ALL_VALID_TAGS]
+        words = re.findall(r"[a-z][a-z-]+", response.lower())
+        potential_tags = [w for w in words if w in self._valid_tags]
 
         if not potential_tags:
             # Even more aggressive: split on commas/spaces
-            parts = re.split(r'[,\s]+', response.lower())
-            potential_tags = [p.strip('"\'[]') for p in parts if p.strip('"\'[]') in ALL_VALID_TAGS]
+            parts = re.split(r"[,\s]+", response.lower())
+            potential_tags = [
+                p.strip("\"'[]") for p in parts if p.strip("\"'[]") in self._valid_tags
+            ]
 
         return potential_tags
 
     def _validate_tags(self, tags: list[str]) -> list[str]:
-        """Filter tags to only those in our vocabulary."""
+        """Filter tags to only those in our vocabulary (built-in + custom)."""
         validated = []
         for tag in tags:
             tag_clean = tag.lower().strip().replace(" ", "-")
-            if tag_clean in ALL_VALID_TAGS:
+            if tag_clean in self._valid_tags:
                 validated.append(tag_clean)
             else:
                 # Try to find a close match
-                for valid_tag in ALL_VALID_TAGS:
+                for valid_tag in self._valid_tags:
                     if tag_clean in valid_tag or valid_tag in tag_clean:
                         validated.append(valid_tag)
                         break
@@ -335,7 +490,7 @@ class StyleTagger:
         if not tags:
             tags = ["casual", "everyday"]
 
-        return list(set(tags))[:self.config.max_tags]
+        return list(set(tags))[: self.config.max_tags]
 
     def _augment_tags(self, tags: list[str], product_name: str) -> list[str]:
         """Add more tags if we don't have enough."""
