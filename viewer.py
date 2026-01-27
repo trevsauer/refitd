@@ -90,7 +90,7 @@ def get_products_from_supabase():
         for p in products:
             # Build image URLs from storage paths
             image_paths = p.get("image_paths", [])
-            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_url = os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL
 
             transformed.append(
                 {
@@ -116,11 +116,18 @@ def get_products_from_supabase():
                     },
                     "description": p.get("description"),
                     "colors": p.get("colors", []),
+                    "color": p.get("color"),  # Single color for this variant
+                    "parent_product_id": p.get(
+                        "parent_product_id"
+                    ),  # Original product ID if color variant
                     "sizes": p.get("sizes", []),
                     "sizes_availability": p.get(
                         "sizes_availability", []
                     ),  # New field with availability
                     "materials": p.get("materials", []),
+                    "composition": p.get(
+                        "composition"
+                    ),  # Fabric composition (e.g., "100% cotton")
                     "images": image_paths,  # Store full paths for Supabase
                     "image_urls": [
                         f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{path}"
@@ -364,9 +371,128 @@ HTML_TEMPLATE = """
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 20px;
+            display: flex;
+            gap: 20px;
+        }
+
+        /* Category Sidebar */
+        .category-sidebar {
+            width: 260px;
+            flex-shrink: 0;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            padding: 20px;
+            height: fit-content;
+            position: sticky;
+            top: 20px;
+        }
+
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .sidebar-header h3 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .sidebar-header .category-icon {
+            font-size: 20px;
+        }
+
+        .category-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .category-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 14px;
+            margin-bottom: 6px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: #f8f9fa;
+            border: 2px solid transparent;
+        }
+
+        .category-item:hover {
+            background: #e8f4fd;
+            border-color: #e0e0e0;
+        }
+
+        .category-item.active {
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            border-color: #2196F3;
+            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.2);
+        }
+
+        .category-item.all-categories {
+            background: linear-gradient(135deg, #f5f5f5, #eeeeee);
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .category-item.all-categories.active {
+            background: linear-gradient(135deg, #333, #555);
+            color: #fff;
+            border-color: #333;
+        }
+
+        .category-item.all-categories.active .category-count {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+        }
+
+        .category-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            text-transform: capitalize;
+        }
+
+        .category-item.active .category-name {
+            color: #1565c0;
+        }
+
+        .category-item.all-categories.active .category-name {
+            color: #fff;
+        }
+
+        .category-count {
+            background: #e0e0e0;
+            color: #666;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 12px;
+            min-width: 28px;
+            text-align: center;
+        }
+
+        .category-item.active .category-count {
+            background: #2196F3;
+            color: #fff;
+        }
+
+        /* Main content area adjustment */
+        .main-content {
+            flex: 1;
+            min-width: 0;
         }
 
         .navigation {
@@ -534,6 +660,17 @@ HTML_TEMPLATE = """
             border-radius: 4px;
             font-size: 13px;
             color: #444;
+        }
+
+        .color-variant-link {
+            transition: all 0.2s ease;
+        }
+
+        .color-variant-link:hover {
+            background: #1565c0 !important;
+            color: white !important;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
 
         .url-link {
@@ -930,11 +1067,429 @@ HTML_TEMPLATE = """
             font-size: 14px;
         }
 
-        @media (max-width: 900px) {
-            .product-card {
-                grid-template-columns: 1fr;
+            @media (max-width: 900px) {
+                .product-card {
+                    grid-template-columns: 1fr;
+                }
             }
-        }
+
+            /* AI Section Styles */
+            .ai-section {
+                background: #fff;
+                border-radius: 8px;
+                padding: 25px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                margin-bottom: 30px;
+            }
+
+            .ai-section h3 {
+                font-size: 20px;
+                margin-bottom: 15px;
+                color: #333;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .ai-status {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: 500;
+            }
+
+            .ai-status.online {
+                background: #e8f5e9;
+                color: #2e7d32;
+            }
+
+            .ai-status.offline {
+                background: #ffebee;
+                color: #c62828;
+            }
+
+            .ai-status .dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+            }
+
+            .ai-status.online .dot {
+                background: #4CAF50;
+                animation: pulse 2s infinite;
+            }
+
+            .ai-status.offline .dot {
+                background: #f44336;
+            }
+
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+            }
+
+            /* AI Search */
+            .ai-search-container {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 20px;
+            }
+
+            .ai-search-input {
+                flex: 1;
+                padding: 15px 20px;
+                font-size: 16px;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                outline: none;
+                transition: border-color 0.2s, box-shadow 0.2s;
+            }
+
+            .ai-search-input:focus {
+                border-color: #9c27b0;
+                box-shadow: 0 0 0 3px rgba(156, 39, 176, 0.1);
+            }
+
+            .ai-search-input::placeholder {
+                color: #999;
+            }
+
+            .ai-search-btn {
+                padding: 15px 30px;
+                background: linear-gradient(135deg, #9c27b0, #7b1fa2);
+                color: #fff;
+                border: none;
+                border-radius: 8px;
+                font-size: 16px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+
+            .ai-search-btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 15px rgba(156, 39, 176, 0.3);
+            }
+
+            .ai-search-btn:disabled {
+                background: #ccc;
+                cursor: not-allowed;
+                transform: none;
+                box-shadow: none;
+            }
+
+            /* AI Results */
+            .ai-results {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+                gap: 20px;
+                margin-top: 20px;
+            }
+
+            .ai-result-card {
+                background: #fafafa;
+                border-radius: 8px;
+                overflow: hidden;
+                transition: transform 0.2s, box-shadow 0.2s;
+                cursor: pointer;
+            }
+
+            .ai-result-card:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            }
+
+            .ai-result-card img {
+                width: 100%;
+                height: 200px;
+                object-fit: cover;
+            }
+
+            .ai-result-card .card-content {
+                padding: 15px;
+            }
+
+            .ai-result-card .card-title {
+                font-size: 14px;
+                font-weight: 500;
+                margin-bottom: 5px;
+                color: #333;
+            }
+
+            .ai-result-card .card-price {
+                font-size: 16px;
+                font-weight: 600;
+                color: #000;
+            }
+
+            .ai-result-card .card-similarity {
+                font-size: 11px;
+                color: #9c27b0;
+                margin-top: 5px;
+            }
+
+            /* Generate Tags Section */
+            .generate-tags-section {
+                display: flex;
+                gap: 15px;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+
+            .generate-tags-btn {
+                padding: 12px 25px;
+                background: linear-gradient(135deg, #ff9800, #f57c00);
+                color: #fff;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+
+            .generate-tags-btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3);
+            }
+
+            .generate-tags-btn:disabled {
+                background: #ccc;
+                cursor: not-allowed;
+                transform: none;
+            }
+
+            /* AI Generate Tags Button for Product Page - Teal color to match AI tags */
+            .ai-generate-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 8px 16px;
+                background: linear-gradient(135deg, #00bcd4, #0097a7);
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.2s;
+                margin-left: 10px;
+            }
+
+            .ai-generate-btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(0, 188, 212, 0.4);
+            }
+
+            .ai-generate-btn:disabled {
+                background: #ccc;
+                cursor: not-allowed;
+                transform: none;
+                box-shadow: none;
+            }
+
+            .ai-generate-btn.loading {
+                pointer-events: none;
+            }
+
+            .ai-generate-btn .spinner {
+                width: 14px;
+                height: 14px;
+                border: 2px solid rgba(255,255,255,0.3);
+                border-top-color: #fff;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                display: none;
+            }
+
+            .ai-generate-btn.loading .spinner {
+                display: inline-block;
+            }
+
+            .ai-generate-btn.loading .btn-text {
+                display: none;
+            }
+
+            /* Reset to Original Button */
+            .reset-metadata-btn {
+                background: linear-gradient(135deg, #ef5350, #c62828);
+                color: #fff;
+                border: none;
+                padding: 8px 14px;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.2s;
+                margin-left: 10px;
+            }
+
+            .reset-metadata-btn:hover {
+                background: linear-gradient(135deg, #f44336, #b71c1c);
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(198, 40, 40, 0.3);
+            }
+
+            .reset-metadata-btn:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+                transform: none;
+            }
+
+            /* AI Generated Tag Styling - Teal/Cyan color */
+            .ai-generated-tag {
+                background: linear-gradient(135deg, #00bcd4, #0097a7) !important;
+                color: #fff !important;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: 13px;
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+            }
+
+            .ai-generated-tag .ai-badge {
+                font-size: 10px;
+                opacity: 0.9;
+                background: rgba(255,255,255,0.2);
+                padding: 1px 4px;
+                border-radius: 3px;
+            }
+
+            .ai-generated-tag .tag-delete-btn {
+                display: none;
+                margin-left: 5px;
+                background: rgba(255,255,255,0.2);
+                border: none;
+                color: #fff;
+                font-size: 12px;
+                cursor: pointer;
+                padding: 2px 6px;
+                border-radius: 3px;
+                line-height: 1;
+            }
+
+            .ai-generated-tag .tag-delete-btn:hover {
+                background: rgba(255,0,0,0.3);
+            }
+
+            .curate-mode .ai-generated-tag .tag-delete-btn {
+                display: inline-block;
+            }
+
+            .curate-mode .ai-tag-delete {
+                display: inline-block;
+            }
+
+            .ai-progress {
+                display: none;
+                align-items: center;
+                gap: 10px;
+                color: #666;
+            }
+
+            .ai-progress.visible {
+                display: flex;
+            }
+
+            .ai-spinner {
+                width: 20px;
+                height: 20px;
+                border: 3px solid #e0e0e0;
+                border-top-color: #9c27b0;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+            }
+
+            @keyframes spin {
+                to { transform: rotate(360deg); }
+            }
+
+            /* AI Chat Widget */
+            .ai-chat-container {
+                background: #f8f9fa;
+                border-radius: 8px;
+                padding: 20px;
+                margin-top: 20px;
+            }
+
+            .ai-chat-messages {
+                max-height: 400px;
+                overflow-y: auto;
+                margin-bottom: 15px;
+                padding: 10px;
+                background: #fff;
+                border-radius: 8px;
+                min-height: 200px;
+            }
+
+            .ai-chat-message {
+                margin-bottom: 15px;
+                padding: 12px 15px;
+                border-radius: 12px;
+                max-width: 85%;
+            }
+
+            .ai-chat-message.user {
+                background: #e3f2fd;
+                margin-left: auto;
+                border-bottom-right-radius: 4px;
+            }
+
+            .ai-chat-message.assistant {
+                background: #f3e5f5;
+                margin-right: auto;
+                border-bottom-left-radius: 4px;
+            }
+
+            .ai-chat-message .role {
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+                margin-bottom: 5px;
+                color: #666;
+            }
+
+            .ai-chat-input-container {
+                display: flex;
+                gap: 10px;
+            }
+
+            .ai-chat-input {
+                flex: 1;
+                padding: 12px 15px;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                font-size: 14px;
+                outline: none;
+            }
+
+            .ai-chat-input:focus {
+                border-color: #9c27b0;
+            }
+
+            .ai-chat-send {
+                padding: 12px 25px;
+                background: #9c27b0;
+                color: #fff;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 500;
+            }
+
+            .ai-chat-send:hover {
+                background: #7b1fa2;
+            }
+
+            .no-results {
+                text-align: center;
+                padding: 40px;
+                color: #666;
+            }
     </style>
 </head>
 <body>
@@ -956,11 +1511,29 @@ HTML_TEMPLATE = """
     </header>
 
     <div class="container">
-        <!-- Tab Navigation -->
-        <div class="tab-nav">
-            <button class="tab-btn active" id="tabProducts" onclick="switchTab('products')">📦 Products</button>
-            <button class="tab-btn" id="tabDashboard" onclick="switchTab('dashboard')">📊 Dashboard</button>
-        </div>
+        <!-- Category Sidebar -->
+        <aside class="category-sidebar" id="categorySidebar">
+            <div class="sidebar-header">
+                <span class="category-icon">📂</span>
+                <h3>Categories</h3>
+            </div>
+            <ul class="category-list" id="categoryList">
+                <li class="category-item all-categories active" data-category="all" onclick="filterByCategory('all')">
+                    <span class="category-name">All Products</span>
+                    <span class="category-count" id="allCount">0</span>
+                </li>
+                <!-- Categories will be populated dynamically -->
+            </ul>
+        </aside>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Tab Navigation -->
+            <div class="tab-nav">
+                <button class="tab-btn active" id="tabProducts" onclick="switchTab('products')">📦 Products</button>
+                <button class="tab-btn" id="tabAI" onclick="switchTab('ai')">🤖 AI Assistant</button>
+                <button class="tab-btn" id="tabDashboard" onclick="switchTab('dashboard')">📊 Dashboard</button>
+            </div>
 
         <!-- Products Tab Content -->
         <div id="productsTab" class="tab-content active">
@@ -977,6 +1550,78 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
+        <!-- AI Tab Content -->
+        <div id="aiTab" class="tab-content">
+            <div class="ai-section">
+                <h3>
+                    🔍 Semantic Search
+                    <span class="ai-status" id="aiStatus">
+                        <span class="dot"></span>
+                        <span id="aiStatusText">Checking...</span>
+                    </span>
+                </h3>
+                <p style="color: #666; margin-bottom: 15px;">Search products using natural language. Describe what you're looking for and AI will find matching items.</p>
+
+                <div class="ai-search-container">
+                    <input type="text"
+                           class="ai-search-input"
+                           id="aiSearchInput"
+                           placeholder="e.g., 'minimal white t-shirt', 'casual summer outfit', 'formal dark blazer'..."
+                           onkeypress="handleAISearchKeypress(event)">
+                    <button class="ai-search-btn" id="aiSearchBtn" onclick="performAISearch()">🔍 Search</button>
+                </div>
+
+                <div class="ai-progress" id="searchProgress">
+                    <div class="ai-spinner"></div>
+                    <span>Searching...</span>
+                </div>
+
+                <div id="aiSearchResults"></div>
+            </div>
+
+            <div class="ai-section">
+                <h3>🏷️ Generate Style Tags</h3>
+                <p style="color: #666; margin-bottom: 15px;">Use AI vision to analyze product images and generate style tags automatically.</p>
+
+                <div class="generate-tags-section">
+                    <button class="generate-tags-btn" id="generateAllTagsBtn" onclick="generateAllTags()">
+                        🤖 Generate Tags for All Products
+                    </button>
+                    <button class="generate-tags-btn" style="background: linear-gradient(135deg, #2196F3, #1976D2);" onclick="generateTagsForCurrent()">
+                        🏷️ Generate Tags for Current Product
+                    </button>
+                    <div class="ai-progress" id="tagProgress">
+                        <div class="ai-spinner"></div>
+                        <span id="tagProgressText">Generating...</span>
+                    </div>
+                </div>
+
+                <div id="tagResults" style="margin-top: 15px;"></div>
+            </div>
+
+            <div class="ai-section">
+                <h3>💬 Fashion Assistant</h3>
+                <p style="color: #666; margin-bottom: 15px;">Chat with the AI about styling advice, outfit recommendations, and product questions.</p>
+
+                <div class="ai-chat-container">
+                    <div class="ai-chat-messages" id="chatMessages">
+                        <div class="ai-chat-message assistant">
+                            <div class="role">Assistant</div>
+                            <div>Hello! I'm your fashion assistant. Ask me about styling advice, outfit combinations, or help finding the perfect items from our catalog.</div>
+                        </div>
+                    </div>
+                    <div class="ai-chat-input-container">
+                        <input type="text"
+                               class="ai-chat-input"
+                               id="chatInput"
+                               placeholder="Ask about styling, outfits, or products..."
+                               onkeypress="handleChatKeypress(event)">
+                        <button class="ai-chat-send" onclick="sendChatMessage()">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Dashboard Tab Content -->
         <div id="dashboardTab" class="tab-content">
             <div id="dashboardContent">
@@ -985,18 +1630,145 @@ HTML_TEMPLATE = """
                 </div>
             </div>
         </div>
+        </div><!-- End main-content -->
     </div>
 
     <script>
         let products = [];
+        let allProducts = [];  // Store all products for filtering
+        let filteredProducts = [];  // Currently filtered products
         let currentIndex = 0;
         let currentImageIndex = 0;
+        let currentCategory = 'all';  // Track selected category
         const useSupabase = {{ 'true' if use_supabase else 'false' }};
+
+        // Build category sidebar from products data
+        function buildCategorySidebar() {
+            const categoryList = document.getElementById('categoryList');
+            if (!categoryList || !allProducts.length) return;
+
+            // Count products per category
+            const categoryCounts = {};
+            allProducts.forEach(product => {
+                const category = product.category || 'Uncategorized';
+                categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+            });
+
+            // Update "All Products" count
+            document.getElementById('allCount').textContent = allProducts.length;
+
+            // Sort categories alphabetically
+            const sortedCategories = Object.keys(categoryCounts).sort();
+
+            // Clear existing category items (except "All Products")
+            const allCategoryItem = categoryList.querySelector('.all-categories');
+            categoryList.innerHTML = '';
+            categoryList.appendChild(allCategoryItem);
+
+            // Add category items
+            sortedCategories.forEach(category => {
+                const count = categoryCounts[category];
+                const li = document.createElement('li');
+                li.className = 'category-item';
+                li.setAttribute('data-category', category);
+                li.onclick = () => filterByCategory(category);
+
+                // Get category icon based on name
+                const icon = getCategoryIcon(category);
+
+                li.innerHTML = `
+                    <span class="category-name">${icon} ${formatCategoryName(category)}</span>
+                    <span class="category-count">${count}</span>
+                `;
+                categoryList.appendChild(li);
+            });
+        }
+
+        // Get icon for category
+        function getCategoryIcon(category) {
+            const icons = {
+                'shirts': '👔',
+                't-shirts': '👕',
+                'pants': '👖',
+                'jeans': '👖',
+                'shorts': '🩳',
+                'jackets': '🧥',
+                'coats': '🧥',
+                'suits': '🤵',
+                'blazers': '🤵',
+                'shoes': '👟',
+                'sneakers': '👟',
+                'boots': '🥾',
+                'hats': '🧢',
+                'sweaters': '🧶',
+                'hoodies': '🧥',
+                'swimwear': '🩱',
+                'activewear': '🏃',
+                'default': '📦'
+            };
+            const lowerCategory = category.toLowerCase();
+            for (const [key, icon] of Object.entries(icons)) {
+                if (lowerCategory.includes(key)) return icon;
+            }
+            return icons.default;
+        }
+
+        // Format category name for display
+        function formatCategoryName(category) {
+            return category
+                .split(/[-_]/)
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                .join(' ');
+        }
+
+        // Filter products by category
+        function filterByCategory(category) {
+            currentCategory = category;
+
+            // Update active state in sidebar
+            document.querySelectorAll('.category-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.getAttribute('data-category') === category) {
+                    item.classList.add('active');
+                }
+            });
+
+            // Filter products
+            if (category === 'all') {
+                filteredProducts = [...allProducts];
+            } else {
+                filteredProducts = allProducts.filter(p => p.category === category);
+            }
+
+            // Update products array and reset to first product
+            products = filteredProducts;
+            currentIndex = 0;
+
+            if (products.length > 0) {
+                displayProduct(0);
+            } else {
+                document.getElementById('productCard').innerHTML = `
+                    <div class="no-data">
+                        <h2>No products in this category</h2>
+                        <p>Select a different category or view all products.</p>
+                    </div>
+                `;
+                document.getElementById('counter').textContent = 'No products';
+            }
+        }
 
         async function loadProducts() {
             try {
                 const response = await fetch('/api/products');
-                products = await response.json();
+                const data = await response.json();
+
+                // Store all products for filtering
+                allProducts = data;
+                filteredProducts = [...allProducts];
+                products = filteredProducts;
+
+                // Build the category sidebar
+                buildCategorySidebar();
 
                 if (products.length > 0) {
                     displayProduct(0);
@@ -1041,7 +1813,9 @@ HTML_TEMPLATE = """
             const product = products[index];
 
             // Update counter
-            document.getElementById('counter').textContent = `Product ${index + 1} of ${products.length}`;
+            // Update counter - show category filter if active
+            const categoryLabel = currentCategory === 'all' ? '' : ` in ${formatCategoryName(currentCategory)}`;
+            document.getElementById('counter').textContent = `Product ${index + 1} of ${products.length}${categoryLabel}`;
 
             // Update navigation buttons
             document.getElementById('prevBtn').disabled = index === 0;
@@ -1051,7 +1825,9 @@ HTML_TEMPLATE = """
             let curatedTags = [];
             let curatedFit = [];
             let curatedWeight = [];
+            let curatedFormality = [];
             let rejectedTags = [];
+            let aiGeneratedTags = [];
             let curationStatus = null;
             if (useSupabase) {
                 // Fetch curated data
@@ -1062,6 +1838,7 @@ HTML_TEMPLATE = """
                         curatedTags = curatedData.filter(c => c.field_name === 'style_tag');
                         curatedFit = curatedData.filter(c => c.field_name === 'fit');
                         curatedWeight = curatedData.filter(c => c.field_name === 'weight');
+                        curatedFormality = curatedData.filter(c => c.field_name === 'formality');
                     }
                 } catch (error) {
                     console.error('Error fetching curated data:', error);
@@ -1078,6 +1855,17 @@ HTML_TEMPLATE = """
                     console.warn('Could not fetch rejected tags (table may not exist yet):', error);
                 }
 
+                // Fetch AI-generated tags (may fail if table doesn't exist yet)
+                try {
+                    const aiTagsResponse = await fetch(`/api/ai_tags/${product.product_id}`);
+                    const aiTagsData = await aiTagsResponse.json();
+                    if (Array.isArray(aiTagsData)) {
+                        aiGeneratedTags = aiTagsData.filter(t => t.field_name === 'style_tag');
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch AI-generated tags (table may not exist yet):', error);
+                }
+
                 // Fetch curation status
                 try {
                     const statusResponse = await fetch(`/api/curation_status/${product.product_id}`);
@@ -1092,6 +1880,9 @@ HTML_TEMPLATE = """
 
             // Store rejected tags globally for easy lookup
             window.currentRejectedTags = rejectedTags;
+
+            // Store AI-generated tags globally
+            window.currentAIGeneratedTags = aiGeneratedTags;
 
             // Helper function to check if an inferred tag is rejected
             function isTagRejected(fieldName, fieldValue) {
@@ -1135,8 +1926,33 @@ HTML_TEMPLATE = """
                 }
             }
 
-            // Build tags
-            const colorTags = (product.colors || []).map(c => `<span class="tag">${c}</span>`).join('');
+            // Build clickable color tags that link to color variants
+            // First, build a map of color variants for this product
+            const currentColor = product.color || '';
+            const parentId = product.parent_product_id || product.product_id.split('_')[0];
+
+            const colorTags = (product.colors || []).map(c => {
+                // Generate the color slug to find the matching product
+                const colorSlug = c.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'unknown';
+                const variantId = parentId + '_' + colorSlug;
+
+                // Check if this is the current color
+                const isCurrentColor = c.toLowerCase() === currentColor.toLowerCase();
+
+                // Find if the color variant exists in our products
+                const variantExists = allProducts.some(p => p.product_id === variantId);
+
+                if (isCurrentColor) {
+                    // Current color - highlight it
+                    return `<span class="tag" style="background:#4CAF50;color:white;font-weight:bold;" title="Current color">${c}</span>`;
+                } else if (variantExists) {
+                    // Clickable link to the variant
+                    return `<span class="tag color-variant-link" style="cursor:pointer;background:#e3f2fd;color:#1565c0;" data-variant-id="${variantId}" onclick="navigateToColorVariant('${variantId}')" title="Click to view ${c} variant">${c}</span>`;
+                } else {
+                    // Variant not in database yet
+                    return `<span class="tag" style="opacity:0.6;" title="Color variant not scraped yet">${c}</span>`;
+                }
+            }).join('');
 
             // Build size tags with availability styling
             // Try to use sizes_availability first (new format with availability), fallback to sizes (old format)
@@ -1221,38 +2037,74 @@ HTML_TEMPLATE = """
 
             // Build formality display
             let formalityHtml = '';
-            if (product.formality) {
-                const score = product.formality.score;
-                const label = product.formality.label;
-                const reasoning = product.formality.reasoning || [];
 
-                // Color based on formality level
-                const formalityColors = {
-                    1: '#ff6b6b',  // Very Casual - red
-                    2: '#ffa94d',  // Casual - orange
-                    3: '#ffd43b',  // Smart Casual - yellow
-                    4: '#69db7c',  // Business Casual - green
-                    5: '#339af0',  // Formal - blue
-                };
-                const barColor = formalityColors[score] || '#ccc';
+            // Color mapping for formality levels
+            const formalityColors = {
+                1: '#ff6b6b',  // Very Casual - red
+                2: '#ffa94d',  // Casual - orange
+                3: '#ffd43b',  // Smart Casual - yellow
+                4: '#69db7c',  // Business Casual - green
+                5: '#339af0',  // Formal - blue
+            };
 
+            // Check if there's a curated formality (takes precedence)
+            let displayScore = null;
+            let displayLabel = null;
+            let displayReasoning = [];
+            let isCurated = false;
+            let curatedBy = null;
+
+            if (curatedFormality.length > 0) {
+                // Parse curated formality (format: "score|label")
+                const curatedValue = curatedFormality[0].field_value;
+                const parts = curatedValue.split('|');
+                displayScore = parseInt(parts[0]);
+                displayLabel = parts[1] || '';
+                isCurated = true;
+                curatedBy = curatedFormality[0].curator;
+            } else if (product.formality) {
+                displayScore = product.formality.score;
+                displayLabel = product.formality.label;
+                displayReasoning = product.formality.reasoning || [];
+            }
+
+            if (displayScore !== null) {
+                const barColor = formalityColors[displayScore] || '#ccc';
+                const curatorColorInfo = isCurated ? (curatorColors[curatedBy] || { bg: '#9c27b0' }) : null;
+
+                formalityHtml = `
+                    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; ${isCurated ? `border: 2px solid ${curatorColorInfo.bg};` : ''}">
+                        <h3 class="section-title" style="margin-top: 0;">
+                            Formality
+                            ${isCurated ? `<span style="font-size: 11px; font-weight: normal; background: ${curatorColorInfo.bg}; color: white; padding: 2px 6px; border-radius: 3px; margin-left: 8px;">Curated by ${curatedBy}</span>` : ''}
+                        </h3>
+                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
+                            <div style="font-size: 32px; font-weight: bold; color: ${barColor};">${displayScore}/5</div>
+                            <div>
+                                <div style="font-size: 18px; font-weight: 500;">${displayLabel}</div>
+                                <div style="display: flex; gap: 2px; margin-top: 5px;">
+                                    ${[1,2,3,4,5].map(i => `<div style="width: 30px; height: 8px; border-radius: 4px; background: ${i <= displayScore ? barColor : '#ddd'};"></div>`).join('')}
+                                </div>
+                            </div>
+                            ${isCurated ? `
+                                <button class="tag-delete-btn" onclick="handleCuratedTagDelete('formality', '${curatedFormality[0].field_value}', '${curatedBy}')" title="Delete curated formality" style="margin-left: auto; font-size: 16px;">×</button>
+                            ` : ''}
+                        </div>
+                        ${!isCurated && displayReasoning.length > 0 ? `
+                            <div style="font-size: 12px; color: #666; margin-top: 10px;">
+                                <strong>Reasoning:</strong> ${displayReasoning.join(' • ')}
+                            </div>
+                        ` : ''}
+                        <div id="curateFormalityInput"></div>
+                    </div>
+                `;
+            } else {
+                // No formality at all - show placeholder with curation input
                 formalityHtml = `
                     <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
                         <h3 class="section-title" style="margin-top: 0;">Formality</h3>
-                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
-                            <div style="font-size: 32px; font-weight: bold; color: ${barColor};">${score}/5</div>
-                            <div>
-                                <div style="font-size: 18px; font-weight: 500;">${label}</div>
-                                <div style="display: flex; gap: 2px; margin-top: 5px;">
-                                    ${[1,2,3,4,5].map(i => `<div style="width: 30px; height: 8px; border-radius: 4px; background: ${i <= score ? barColor : '#ddd'};"></div>`).join('')}
-                                </div>
-                            </div>
-                        </div>
-                        ${reasoning.length > 0 ? `
-                            <div style="font-size: 12px; color: #666; margin-top: 10px;">
-                                <strong>Reasoning:</strong> ${reasoning.join(' • ')}
-                            </div>
-                        ` : ''}
+                        <span style="color:#999;font-size:13px;">Not specified</span>
+                        <div id="curateFormalityInput"></div>
                     </div>
                 `;
             }
@@ -1297,12 +2149,27 @@ HTML_TEMPLATE = """
                     <div id="curateWeightInput"></div>
 
                     ${styleTags || curatedTags.length > 0 ? `
-                        <h3 class="section-title">Style Tags <span style="font-size:10px;color:#999;font-weight:normal;">(hover for reasoning)</span></h3>
-                        <div class="tag-list" id="styleTagsList">${styleTags}${renderCuratedTagsInline(curatedTags)}</div>
+                        <h3 class="section-title">
+                            Style Tags <span style="font-size:10px;color:#999;font-weight:normal;">(hover for reasoning)</span>
+                            <button class="ai-generate-btn" onclick="generateAITagsForProduct('${product.product_id}')" id="aiGenTagsBtn">
+                                <span class="spinner"></span>
+                            <span class="btn-text">🤖 AI Generate</span>
+                            </button>
+                            <button class="reset-metadata-btn" onclick="resetProductMetadata('${product.product_id}')" title="Remove all curated and AI-generated tags, restore to original scraped data">🔄 Reset to Original</button>
+                        </h3>
+                        <div class="tag-list" id="styleTagsList">${styleTags}${renderCuratedTagsInline(curatedTags)}${renderAIGeneratedTagsInline(aiGeneratedTags)}</div>
                     ` : `
-                        <h3 class="section-title">Style Tags</h3>
-                        <div class="tag-list" id="styleTagsList"><span style="color:#999;font-size:13px;">No style tags</span></div>
+                        <h3 class="section-title">
+                            Style Tags
+                            <button class="ai-generate-btn" onclick="generateAITagsForProduct('${product.product_id}')" id="aiGenTagsBtn">
+                                <span class="spinner"></span>
+                                <span class="btn-text">🤖 AI Generate</span>
+                            </button>
+                            <button class="reset-metadata-btn" onclick="resetProductMetadata('${product.product_id}')" title="Remove all curated and AI-generated tags, restore to original scraped data">🔄 Reset to Original</button>
+                        </h3>
+                        <div class="tag-list" id="styleTagsList">${renderAIGeneratedTagsInline(aiGeneratedTags) || '<span style="color:#999;font-size:13px;">No style tags</span>'}</div>
                     `}
+                    <div id="aiTagsStatus" style="margin-top: 8px; font-size: 12px;"></div>
                     <div id="curateStyleTagInput"></div>
 
                     ${product.description ? `
@@ -1323,6 +2190,13 @@ HTML_TEMPLATE = """
                     ${materialTags ? `
                         <h3 class="section-title">Materials</h3>
                         <div class="tag-list">${materialTags}</div>
+                    ` : ''}
+
+                    ${product.composition ? `
+                        <h3 class="section-title">Composition</h3>
+                        <p class="description" style="background: #f5f5f5; padding: 10px; border-radius: 4px; font-family: monospace;">
+                            ${product.composition}
+                        </p>
                     ` : ''}
 
                     <h3 class="section-title">Source URL</h3>
@@ -1372,6 +2246,20 @@ HTML_TEMPLATE = """
             const newIndex = currentIndex + direction;
             if (newIndex >= 0 && newIndex < products.length) {
                 displayProduct(newIndex);
+            }
+        }
+
+        function navigateToColorVariant(variantId) {
+            // Find the index of the color variant product
+            const variantIndex = products.findIndex(p => p.product_id === variantId);
+
+            if (variantIndex !== -1) {
+                displayProduct(variantIndex);
+                // Scroll to top of product card for better UX
+                document.getElementById('productCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else {
+                console.warn('Color variant not found:', variantId);
+                alert(`Color variant "${variantId}" not found in the product database.`);
             }
         }
 
@@ -1467,6 +2355,22 @@ HTML_TEMPLATE = """
                         ${tag.field_value} <span class="curator-name">(${tag.curator})</span>
                     </span>
                     <button class="tag-delete-btn" onclick="handleCuratedTagDelete('${tag.field_name}', '${tag.field_value}', '${tag.curator}')" title="Delete curated tag">×</button>
+                </span>`;
+            }).join('');
+        }
+
+        // Render AI-generated tags with teal/cyan color
+        function renderAIGeneratedTagsInline(aiTags) {
+            if (!aiTags || aiTags.length === 0) {
+                return '';
+            }
+
+            return aiTags.map(tag => {
+                return `<span class="tag-container">
+                    <span class="ai-generated-tag" style="background: linear-gradient(135deg, #00bcd4, #0097a7); color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 13px; display: inline-flex; align-items: center; gap: 5px;" data-type="ai-generated" data-field="${tag.field_name}" data-value="${tag.field_value}">
+                        ${tag.field_value} <span class="ai-badge" style="font-size: 10px; opacity: 0.9; background: rgba(255,255,255,0.2); padding: 1px 4px; border-radius: 3px;">🤖 AI</span>
+                    </span>
+                    <button class="tag-delete-btn ai-tag-delete" onclick="event.stopPropagation(); handleAITagDelete('${tag.field_name}', '${tag.field_value}')" title="Delete AI-generated tag">×</button>
                 </span>`;
             }).join('');
         }
@@ -1599,6 +2503,29 @@ HTML_TEMPLATE = """
                 `;
             }
 
+            // Formality input - dropdown for score and label
+            const formalityInputContainer = document.getElementById('curateFormalityInput');
+            if (formalityInputContainer) {
+                formalityInputContainer.innerHTML = `
+                    <div class="curate-input-wrapper" style="margin-top: 10px;">
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <select id="newFormalityScore" class="curate-input" style="width: auto; border-color: ${colorInfo.bg};">
+                                <option value="">Score...</option>
+                                <option value="1">1 - Very Casual</option>
+                                <option value="2">2 - Casual</option>
+                                <option value="3">3 - Smart Casual</option>
+                                <option value="4">4 - Business Casual</option>
+                                <option value="5">5 - Formal</option>
+                            </select>
+                            <button onclick="addCuratedFormality()"
+                                    style="background: ${colorInfo.bg}; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;">
+                                Set Formality
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
             // Mark as Complete button
             const curationButtonArea = document.getElementById('curationButtonArea');
             if (curationButtonArea) {
@@ -1670,6 +2597,63 @@ HTML_TEMPLATE = """
             }
         }
 
+        // Add curated formality with score and label
+        async function addCuratedFormality() {
+            if (!curateMode || !currentCurator) {
+                alert('Please enable Curate Mode and select a curator first');
+                return;
+            }
+
+            const scoreSelect = document.getElementById('newFormalityScore');
+            const score = scoreSelect.value;
+
+            if (!score) {
+                alert('Please select a formality score');
+                return;
+            }
+
+            // Get the label based on score
+            const formalityLabels = {
+                '1': 'Very Casual',
+                '2': 'Casual',
+                '3': 'Smart Casual',
+                '4': 'Business Casual',
+                '5': 'Formal'
+            };
+            const label = formalityLabels[score];
+
+            // Format as "score|label" for storage
+            const formattedValue = `${score}|${label}`;
+
+            const product = products[currentIndex];
+
+            // Save to database
+            try {
+                const response = await fetch('/api/curated', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: product.product_id,
+                        field_name: 'formality',
+                        field_value: formattedValue,
+                        curator: currentCurator
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    console.log(`✓ Saved curated formality: "${score}/5 - ${label}" by ${currentCurator}`);
+                    // Refresh the product display to show the curated formality
+                    showProduct(currentIndex);
+                } else {
+                    console.error('Failed to save formality:', result.error);
+                    alert('Failed to save formality: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error saving curated formality:', error);
+                alert('Error saving formality');
+            }
+        }
+
         // ============================================
         // TAG DELETION FUNCTIONALITY
         // ============================================
@@ -1720,6 +2704,46 @@ HTML_TEMPLATE = """
             } catch (error) {
                 console.error('Error deleting curated tag:', error);
                 alert('Error deleting tag');
+            }
+        }
+
+        // Handle deletion of AI-generated tags
+        async function handleAITagDelete(fieldName, fieldValue) {
+            if (!curateMode || !currentCurator) {
+                alert('Please enter curate mode first to delete tags.');
+                return;
+            }
+
+            const product = products[currentIndex];
+
+            if (!confirm(`Delete AI-generated tag "${fieldValue}"?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/ai_tags', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: product.product_id,
+                        field_name: fieldName,
+                        field_value: fieldValue
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success || result.error === undefined) {
+                    console.log(`✓ Deleted AI-generated tag: "${fieldValue}"`);
+                    // Refresh the display
+                    await displayProduct(currentIndex);
+                    showCurateInputs();
+                } else {
+                    console.error('Failed to delete:', result.error);
+                    alert('Failed to delete AI tag: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error deleting AI-generated tag:', error);
+                alert('Error deleting AI tag');
             }
         }
 
@@ -1811,16 +2835,421 @@ HTML_TEMPLATE = """
         function switchTab(tab) {
             // Update tab buttons
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(tab === 'products' ? 'tabProducts' : 'tabDashboard').classList.add('active');
+            if (tab === 'products') {
+                document.getElementById('tabProducts').classList.add('active');
+            } else if (tab === 'ai') {
+                document.getElementById('tabAI').classList.add('active');
+            } else {
+                document.getElementById('tabDashboard').classList.add('active');
+            }
 
             // Update tab content
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            document.getElementById(tab === 'products' ? 'productsTab' : 'dashboardTab').classList.add('active');
-
-            // Load dashboard data if switching to dashboard
-            if (tab === 'dashboard') {
+            if (tab === 'products') {
+                document.getElementById('productsTab').classList.add('active');
+            } else if (tab === 'ai') {
+                document.getElementById('aiTab').classList.add('active');
+                checkAIStatus();
+            } else {
+                document.getElementById('dashboardTab').classList.add('active');
                 loadDashboard();
             }
+        }
+
+        // ============================================
+        // AI FUNCTIONALITY
+        // ============================================
+
+        let chatHistory = [];
+
+        async function checkAIStatus() {
+            const statusEl = document.getElementById('aiStatus');
+            const statusText = document.getElementById('aiStatusText');
+
+            try {
+                const response = await fetch('/api/ai/status');
+                const data = await response.json();
+
+                if (data.available) {
+                    statusEl.classList.remove('offline');
+                    statusEl.classList.add('online');
+                    statusText.textContent = 'Online';
+                } else {
+                    statusEl.classList.remove('online');
+                    statusEl.classList.add('offline');
+                    statusText.textContent = 'Offline';
+                }
+            } catch (error) {
+                statusEl.classList.remove('online');
+                statusEl.classList.add('offline');
+                statusText.textContent = 'Error';
+            }
+        }
+
+        function handleAISearchKeypress(event) {
+            if (event.key === 'Enter') {
+                performAISearch();
+            }
+        }
+
+        async function performAISearch() {
+            const input = document.getElementById('aiSearchInput');
+            const query = input.value.trim();
+
+            if (!query) {
+                alert('Please enter a search query');
+                return;
+            }
+
+            const searchBtn = document.getElementById('aiSearchBtn');
+            const progress = document.getElementById('searchProgress');
+            const results = document.getElementById('aiSearchResults');
+
+            searchBtn.disabled = true;
+            progress.classList.add('visible');
+            results.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/ai/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query, limit: 12 })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    results.innerHTML = `<div class="no-results"><p>❌ ${data.error}</p></div>`;
+                } else if (data.results && data.results.length > 0) {
+                    renderSearchResults(data.results);
+                } else {
+                    results.innerHTML = `<div class="no-results"><p>No matching products found. Try a different description.</p></div>`;
+                }
+            } catch (error) {
+                results.innerHTML = `<div class="no-results"><p>❌ Error: ${error.message}</p></div>`;
+            } finally {
+                searchBtn.disabled = false;
+                progress.classList.remove('visible');
+            }
+        }
+
+        function renderSearchResults(results) {
+            const container = document.getElementById('aiSearchResults');
+            const supabaseUrl = '{{ supabase_url }}';
+
+            const html = `
+                <p style="color: #666; margin-bottom: 15px;">Found ${results.length} matching products:</p>
+                <div class="ai-results">
+                    ${results.map(product => {
+                        let imageUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="250" height="200" fill="%23ccc"><rect width="100%" height="100%"/><text x="50%" y="50%" text-anchor="middle" fill="%23999">No Image</text></svg>';
+
+                        if (product.image_urls && product.image_urls[0]) {
+                            imageUrl = product.image_urls[0];
+                        } else if (product.primary_image) {
+                            imageUrl = product.primary_image;
+                        }
+
+                        const similarity = product.similarity ? Math.round(product.similarity * 100) : '';
+
+                        return `
+                            <div class="ai-result-card" onclick="goToProduct('${product.product_id}')">
+                                <img src="${imageUrl}" alt="${product.name}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22250%22 height=%22200%22 fill=%22%23ccc%22><rect width=%22100%25%22 height=%22100%25%22/><text x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 fill=%22%23999%22>No Image</text></svg>'">
+                                <div class="card-content">
+                                    <div class="card-title">${product.name || 'Unknown'}</div>
+                                    <div class="card-price">${product.price || ''}</div>
+                                    ${similarity ? `<div class="card-similarity">${similarity}% match</div>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        function goToProduct(productId) {
+            const index = products.findIndex(p => p.product_id === productId);
+            if (index !== -1) {
+                switchTab('products');
+                displayProduct(index);
+            } else {
+                alert('Product not found in current view. Try refreshing the page.');
+            }
+        }
+
+        async function generateAllTags() {
+            const btn = document.getElementById('generateAllTagsBtn');
+            const progress = document.getElementById('tagProgress');
+            const progressText = document.getElementById('tagProgressText');
+            const results = document.getElementById('tagResults');
+
+            if (!confirm('This will generate AI style tags for all products without tags. This may take several minutes. Continue?')) {
+                return;
+            }
+
+            btn.disabled = true;
+            progress.classList.add('visible');
+            progressText.textContent = 'Starting...';
+            results.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/ai/generate-tags', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ all: true })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    results.innerHTML = `<p style="color: #c62828;">❌ ${data.error}</p>`;
+                } else {
+                    results.innerHTML = `<p style="color: #2e7d32;">✅ Generated tags for ${data.count || 0} products!</p>`;
+                    // Reload products to show new tags
+                    await loadProducts();
+                }
+            } catch (error) {
+                results.innerHTML = `<p style="color: #c62828;">❌ Error: ${error.message}</p>`;
+            } finally {
+                btn.disabled = false;
+                progress.classList.remove('visible');
+            }
+        }
+
+        async function generateTagsForCurrent() {
+            if (products.length === 0 || currentIndex < 0) {
+                alert('No product selected');
+                return;
+            }
+
+            const product = products[currentIndex];
+            const progress = document.getElementById('tagProgress');
+            const progressText = document.getElementById('tagProgressText');
+            const results = document.getElementById('tagResults');
+
+            progress.classList.add('visible');
+            progressText.textContent = `Analyzing ${product.name}...`;
+            results.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/ai/generate-tags', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_id: product.product_id })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    results.innerHTML = `<p style="color: #c62828;">❌ ${data.error}</p>`;
+                } else if (data.tags) {
+                    results.innerHTML = `
+                        <p style="color: #2e7d32;">✅ Generated tags for ${product.name}:</p>
+                        <div class="tag-list" style="margin-top: 10px;">
+                            ${data.tags.map(tag => `<span class="tag" style="background:#e3f2fd;color:#1565c0;">${tag}</span>`).join('')}
+                        </div>
+                    `;
+                    // Reload the current product to show new tags
+                    await loadProducts();
+                    displayProduct(currentIndex);
+                }
+            } catch (error) {
+                results.innerHTML = `<p style="color: #c62828;">❌ Error: ${error.message}</p>`;
+            } finally {
+                progress.classList.remove('visible');
+            }
+        }
+
+        // Generate AI tags for a specific product (called from product page button)
+        async function generateAITagsForProduct(productId) {
+            const btn = document.getElementById('aiGenTagsBtn');
+            const statusDiv = document.getElementById('aiTagsStatus');
+
+            if (!btn || !statusDiv) return;
+
+            // Set loading state
+            btn.classList.add('loading');
+            btn.disabled = true;
+            statusDiv.innerHTML = '<span style="color: #0097a7;">🔄 Analyzing product images with AI...</span>';
+
+            try {
+                const response = await fetch('/api/ai/generate-tags', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_id: productId })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    statusDiv.innerHTML = `<span style="color: #c62828;">❌ ${data.error}</span>`;
+                } else if (data.tags && data.tags.length > 0) {
+                    statusDiv.innerHTML = `<span style="color: #0097a7;">✅ Generated ${data.tags.length} new tags!</span>`;
+
+                    // Build the new AI tags and append them directly to the page without reloading
+                    const newAITags = data.tags.map(tagValue => ({
+                        field_name: 'style_tag',
+                        field_value: tagValue
+                    }));
+
+                    // Add new tags to the global array
+                    window.currentAIGeneratedTags = [...(window.currentAIGeneratedTags || []), ...newAITags];
+
+                    // Render the new tags directly into the style tags list
+                    const styleTagsList = document.getElementById('styleTagsList');
+                    if (styleTagsList) {
+                        const newTagsHtml = renderAIGeneratedTagsInline(newAITags);
+                        styleTagsList.insertAdjacentHTML('beforeend', newTagsHtml);
+                    }
+                } else if (data.filtered_duplicates > 0) {
+                    // AI generated tags but all were duplicates
+                    statusDiv.innerHTML = `<span style="color: #0097a7;">ℹ️ AI found ${data.original_count} tags, but all matched existing tags</span>`;
+                } else if (data.original_count === 0) {
+                    // AI couldn't generate any tags
+                    statusDiv.innerHTML = `<span style="color: #ff9800;">⚠️ AI couldn't identify style tags for this image</span>`;
+                } else {
+                    statusDiv.innerHTML = `<span style="color: #ff9800;">⚠️ No new tags generated</span>`;
+                }
+            } catch (error) {
+                console.error('Error generating AI tags:', error);
+                statusDiv.innerHTML = `<span style="color: #c62828;">❌ Error: ${error.message}</span>`;
+            } finally {
+            // Reset button state
+                btn.classList.remove('loading');
+                btn.disabled = false;
+            }
+        }
+
+        // Reset product metadata to original scraped state
+        async function resetProductMetadata(productId) {
+            if (!confirm('This will remove all curated tags, AI-generated tags, and manual changes for this product. The product will be restored to its original scraped state. Continue?')) {
+                return;
+            }
+
+            const statusDiv = document.getElementById('aiTagsStatus');
+            if (statusDiv) {
+                statusDiv.innerHTML = '<span style="color: #ef5350;">🔄 Resetting to original state...</span>';
+            }
+
+            try {
+                const response = await fetch('/api/reset-metadata/' + productId, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    if (statusDiv) {
+                        statusDiv.innerHTML = '<span style="color: #c62828;">❌ ' + data.error + '</span>';
+                    }
+                } else {
+                    if (statusDiv) {
+                        statusDiv.innerHTML = '<span style="color: #4caf50;">✅ Reset complete! Removed ' + (data.curated_deleted || 0) + ' curated and ' + (data.ai_deleted || 0) + ' AI tags</span>';
+                    }
+                    // Refresh the product display
+                    await displayProduct(currentIndex);
+                }
+            } catch (error) {
+                console.error('Error resetting metadata:', error);
+                if (statusDiv) {
+                    statusDiv.innerHTML = '<span style="color: #c62828;">❌ Error: ' + error.message + '</span>';
+                }
+            }
+        }
+
+        function handleChatKeypress(event) {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        }
+
+        async function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+
+            if (!message) return;
+
+            input.value = '';
+
+            const messagesContainer = document.getElementById('chatMessages');
+
+            // Add user message to UI
+            messagesContainer.innerHTML += `
+                <div class="ai-chat-message user">
+                    <div class="role">You</div>
+                    <div>${escapeHtml(message)}</div>
+                </div>
+            `;
+
+            // Add to history
+            chatHistory.push({ role: 'user', content: message });
+
+            // Add loading indicator
+            messagesContainer.innerHTML += `
+                <div class="ai-chat-message assistant" id="chatLoading">
+                    <div class="role">Assistant</div>
+                    <div><em>Thinking...</em></div>
+                </div>
+            `;
+
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+            try {
+                const response = await fetch('/api/ai/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: chatHistory })
+                });
+
+                const data = await response.json();
+
+                // Remove loading indicator
+                document.getElementById('chatLoading')?.remove();
+
+                if (data.error) {
+                    messagesContainer.innerHTML += `
+                        <div class="ai-chat-message assistant">
+                            <div class="role">Assistant</div>
+                            <div style="color: #c62828;">Error: ${data.error}</div>
+                        </div>
+                    `;
+                } else {
+                    const assistantMessage = data.response || 'No response';
+                    chatHistory.push({ role: 'assistant', content: assistantMessage });
+
+                    messagesContainer.innerHTML += `
+                        <div class="ai-chat-message assistant">
+                            <div class="role">Assistant</div>
+                            <div>${formatChatResponse(assistantMessage)}</div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('chatLoading')?.remove();
+                messagesContainer.innerHTML += `
+                    <div class="ai-chat-message assistant">
+                        <div class="role">Assistant</div>
+                        <div style="color: #c62828;">Error: ${error.message}</div>
+                    </div>
+                `;
+            }
+
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatChatResponse(text) {
+            // Basic markdown-like formatting
+            return text
+                .replace(/\\n/g, '<br>')
+                .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
+                .replace(/\\*(.+?)\\*/g, '<em>$1</em>');
         }
 
         // ============================================
@@ -1899,11 +3328,8 @@ HTML_TEMPLATE = """
                                 <option value="blazers" selected>Blazers</option>
                                 <option value="suits" selected>Suits</option>
                             </optgroup>
-                            <optgroup label="Footwear & Accessories">
+                            <optgroup label="Footwear">
                                 <option value="shoes" selected>Shoes</option>
-                                <option value="bags" selected>Bags</option>
-                                <option value="accessories" selected>Accessories</option>
-                                <option value="underwear" selected>Underwear</option>
                             </optgroup>
                             <optgroup label="Discovery">
                                 <option value="new-in" selected>New In</option>
@@ -2537,10 +3963,471 @@ HTML_TEMPLATE = """
                 }
             } catch (error) {
                 console.error('Error unmarking:', error);
-                alert('Error removing completion status');
+            alert('Error removing completion status');
             }
         }
+
+        // ============================================
+        // VOCABULARY MANAGEMENT
+        // ============================================
+
+        async function loadCustomVocabulary() {
+            try {
+                const response = await fetch('/api/vocabulary');
+                const result = await response.json();
+
+                if (result.success) {
+                    displayCustomVocabulary(result.vocabulary);
+                    updateCategoryDropdown(result.vocabulary);
+                } else {
+                    document.getElementById('customVocabList').innerHTML = '<em style="color: #666;">No custom vocabulary yet</em>';
+                }
+            } catch (error) {
+                console.error('Error loading vocabulary:', error);
+                document.getElementById('customVocabList').innerHTML = '<em style="color: #ff6b6b;">Error loading vocabulary</em>';
+            }
+        }
+
+        function displayCustomVocabulary(vocabulary) {
+            const container = document.getElementById('customVocabList');
+
+            if (!vocabulary || Object.keys(vocabulary).length === 0) {
+                container.innerHTML = '<em style="color: #666;">No custom vocabulary yet. Add tags above to extend the AI vocabulary.</em>';
+                return;
+            }
+
+            let html = '<div style="display: flex; flex-wrap: wrap; gap: 15px;">';
+
+            for (const [category, tags] of Object.entries(vocabulary)) {
+                if (tags && tags.length > 0) {
+                    html += `
+                        <div style="background: rgba(100, 181, 246, 0.1); padding: 10px 15px; border-radius: 8px; border-left: 3px solid #64b5f6;">
+                            <strong style="color: #64b5f6; text-transform: capitalize;">${category.replace('_', ' ')}:</strong>
+                            <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                                ${tags.map(tag => `
+                                    <span style="background: rgba(0,212,170,0.2); color: #00d4aa; padding: 3px 8px; border-radius: 4px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;">
+                                        ${tag}
+                                        <span onclick="deleteVocabTag('${category}', '${tag}')" style="cursor: pointer; opacity: 0.7; font-size: 14px;" title="Remove tag">×</span>
+                                    </span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function updateCategoryDropdown(vocabulary) {
+            const dropdown = document.getElementById('vocabCategory');
+            if (!dropdown) return;
+
+            // Add custom categories to dropdown
+            if (vocabulary) {
+                for (const category of Object.keys(vocabulary)) {
+                    // Check if category already exists in dropdown
+                    const exists = Array.from(dropdown.options).some(opt => opt.value === category);
+                    if (!exists) {
+                        const option = document.createElement('option');
+                        option.value = category;
+                        option.textContent = category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        dropdown.appendChild(option);
+                    }
+                }
+            }
+        }
+
+        async function addVocabTag() {
+            const category = document.getElementById('vocabCategory').value;
+            const tag = document.getElementById('vocabNewTag').value.trim().toLowerCase();
+
+            if (!tag) {
+                alert('Please enter a tag');
+                return;
+            }
+
+            if (!/^[a-z][a-z0-9-]*$/.test(tag)) {
+                alert('Tags must start with a letter and contain only lowercase letters, numbers, and hyphens');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/vocabulary/tag', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category, tag })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    document.getElementById('vocabNewTag').value = '';
+                    loadCustomVocabulary();
+                    alert(`Tag "${tag}" added to ${category}!`);
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error adding tag:', error);
+                alert('Error adding tag');
+            }
+        }
+
+        async function createVocabCategory() {
+            const categoryName = document.getElementById('newCategoryName').value.trim().toLowerCase().replace(/\s+/g, '_');
+            const tagsInput = document.getElementById('newCategoryTags').value.trim();
+
+            if (!categoryName) {
+                alert('Please enter a category name');
+                return;
+            }
+
+            if (!/^[a-z][a-z0-9_]*$/.test(categoryName)) {
+                alert('Category name must start with a letter and contain only lowercase letters, numbers, and underscores');
+                return;
+            }
+
+            const tags = tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+
+            if (tags.length === 0) {
+                alert('Please enter at least one initial tag');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/vocabulary/category', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category: categoryName, tags })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    document.getElementById('newCategoryName').value = '';
+                    document.getElementById('newCategoryTags').value = '';
+                    loadCustomVocabulary();
+                    alert(`Category "${categoryName}" created with ${tags.length} tags!`);
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error creating category:', error);
+                alert('Error creating category');
+            }
+        }
+
+        async function deleteVocabTag(category, tag) {
+            if (!confirm(`Remove "${tag}" from ${category}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/vocabulary/tag', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category, tag })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    loadCustomVocabulary();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error deleting tag:', error);
+                alert('Error deleting tag');
+            }
+        }
+
+        // Load custom vocabulary when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Delay loading to ensure other elements are ready
+            setTimeout(loadCustomVocabulary, 1000);
+        });
     </script>
+
+    <!-- AI Technology Documentation Section -->
+    <div id="aiDocumentation" style="
+        max-width: 900px;
+        margin: 60px auto 40px auto;
+        padding: 30px;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #e0e0e0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    ">
+        <h2 style="
+            color: #00d4aa;
+            margin-bottom: 25px;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        ">
+            🤖 AI Technology Documentation
+        </h2>
+
+        <!-- Model Overview -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                📦 AI Model: Moondream
+            </h3>
+            <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 10px;">
+                This application uses <strong style="color: #fff;">Moondream</strong>, a lightweight vision-language model
+                specifically designed for efficient image understanding tasks. Moondream is an open-source model that runs
+                locally on your machine through <strong style="color: #fff;">Ollama</strong>, a local AI inference server.
+            </p>
+        </div>
+
+        <!-- Why Moondream -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                🎯 Why Moondream Was Selected
+            </h3>
+            <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
+                <li><strong style="color: #fff;">Lightweight & Fast:</strong> Moondream is optimized for speed, making it ideal for processing multiple product images without long wait times.</li>
+                <li><strong style="color: #fff;">Privacy-First:</strong> Runs entirely on your local machine—no product images or data are sent to external servers.</li>
+                <li><strong style="color: #fff;">Vision-Specialized:</strong> Unlike general-purpose LLMs, Moondream is specifically trained for visual understanding tasks.</li>
+                <li><strong style="color: #fff;">No API Costs:</strong> Being a local model, there are no per-request API charges or rate limits.</li>
+                <li><strong style="color: #fff;">Consistent Results:</strong> Low temperature settings (0.3) ensure reproducible, reliable tag generation.</li>
+            </ul>
+        </div>
+
+        <!-- What It's Good At -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                ✨ What Moondream Excels At
+            </h3>
+            <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
+                <li><strong style="color: #fff;">Visual Feature Extraction:</strong> Identifying patterns, colors, textures, and materials in clothing images.</li>
+                <li><strong style="color: #fff;">Style Classification:</strong> Categorizing garments by aesthetic (minimal, streetwear, formal, etc.).</li>
+                <li><strong style="color: #fff;">Fit Recognition:</strong> Detecting silhouettes like slim, oversized, relaxed, or tailored fits.</li>
+                <li><strong style="color: #fff;">Detail Detection:</strong> Spotting specific features like collars, pockets, zippers, and embroidery.</li>
+                <li><strong style="color: #fff;">Context Understanding:</strong> Combining visual analysis with product name context for more accurate tags.</li>
+            </ul>
+        </div>
+
+        <!-- What It Actually Does -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                ⚙️ How It Works In This Application
+            </h3>
+            <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; margin-bottom: 15px;">
+                <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                    When you click the <span style="background: linear-gradient(135deg, #00d4aa, #00a896); color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 500;">✨ AI Generate</span> button, the following process occurs:
+                </p>
+                <ol style="line-height: 1.9; color: #b0b0b0; padding-left: 20px;">
+                    <li><strong style="color: #fff;">Image Retrieval:</strong> The product's primary image is fetched from Supabase Storage.</li>
+                    <li><strong style="color: #fff;">Prompt Construction:</strong> A structured prompt is built combining the image with the product name and description.</li>
+                    <li><strong style="color: #fff;">Vision Analysis:</strong> Moondream analyzes the image and generates descriptive tags based on what it sees.</li>
+                    <li><strong style="color: #fff;">Vocabulary Filtering:</strong> The AI's raw output is filtered against the curated vocabulary (see below). Only tags that exist in the vocabulary are kept—this ensures consistency.</li>
+                    <li><strong style="color: #fff;">Validation:</strong> Filtered tags are deduplicated and normalized (lowercase, trimmed).</li>
+                    <li><strong style="color: #fff;">Duplicate Prevention:</strong> Generated tags are compared against existing inferred tags and previously generated AI tags to avoid repeats.</li>
+                    <li><strong style="color: #fff;">Storage:</strong> New, unique tags are saved to the <code style="background: #2d3748; padding: 2px 6px; border-radius: 4px;">ai_generated_tags</code> table in Supabase.</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- Vocabulary Explanation -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                📚 The Curated Vocabulary System
+            </h3>
+            <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; margin-bottom: 15px;">
+                <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                    <strong style="color: #fff;">Important:</strong> The ~86 style tags are <em>not</em> learned or generated by the AI model itself.
+                    They are a <strong style="color: #00d4aa;">manually curated vocabulary</strong> defined by developers to ensure consistent,
+                    controlled tagging across all products.
+                </p>
+                <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                    <strong style="color: #fff;">How it works:</strong>
+                </p>
+                <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px; margin-bottom: 15px;">
+                    <li>Moondream analyzes the image and outputs <em>any</em> descriptive tags it thinks are relevant</li>
+                    <li>The system then filters these through the vocabulary whitelist</li>
+                    <li>Only tags that match the curated vocabulary are accepted</li>
+                    <li>This prevents inconsistent or unusable tags like "nice-looking" or "blue-ish"</li>
+                </ul>
+                <p style="line-height: 1.7; color: #b0b0b0;">
+                    <strong style="color: #fff;">Why curate?</strong> A controlled vocabulary ensures that:
+                </p>
+                <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
+                    <li>Tags are consistent across all products (no "casual" vs "chill" variations)</li>
+                    <li>Search and filtering work reliably</li>
+                    <li>Tags are meaningful for fashion categorization</li>
+                    <li>The system can be extended with new tags as needed (see Vocabulary Manager below)</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Tag Categories -->
+        <div style="margin-bottom: 15px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                🏷️ Style Tag Categories
+            </h3>
+            <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                The AI generates tags from these predefined categories to ensure consistency:
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                <div style="background: rgba(100, 181, 246, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #64b5f6;">
+                    <strong style="color: #64b5f6;">Aesthetic:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> minimal, streetwear, preppy, vintage...</span>
+                </div>
+                <div style="background: rgba(129, 199, 132, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #81c784;">
+                    <strong style="color: #81c784;">Fit:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> slim, relaxed, oversized, tailored...</span>
+                </div>
+                <div style="background: rgba(255, 183, 77, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #ffb74d;">
+                    <strong style="color: #ffb74d;">Pattern:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> solid, striped, plaid, graphic...</span>
+                </div>
+                <div style="background: rgba(186, 104, 200, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #ba68c8;">
+                    <strong style="color: #ba68c8;">Material:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> cotton, denim, linen, wool...</span>
+                </div>
+                <div style="background: rgba(255, 138, 128, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #ff8a80;">
+                    <strong style="color: #ff8a80;">Season:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> summer, winter, all-season...</span>
+                </div>
+                <div style="background: rgba(79, 195, 247, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #4fc3f7;">
+                    <strong style="color: #4fc3f7;">Occasion:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> casual, formal, athletic, lounge...</span>
+                </div>
+                <div style="background: rgba(174, 213, 129, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #aed581;">
+                    <strong style="color: #aed581;">Color Mood:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> neutral, bold, muted, pastel...</span>
+                </div>
+                <div style="background: rgba(240, 98, 146, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #f06292;">
+                    <strong style="color: #f06292;">Details:</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> pocket, collar, hood, distressed...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vocabulary Manager -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                🛠️ Vocabulary Manager
+            </h3>
+            <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                Extend the AI vocabulary by adding new tags to existing categories or creating entirely new categories.
+                Custom vocabulary is stored in Supabase and merged with the default tags.
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <!-- Add Tag to Existing Category -->
+                <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px;">
+                    <h4 style="color: #81c784; margin-bottom: 15px; font-size: 15px;">➕ Add Tag to Category</h4>
+                    <div style="margin-bottom: 12px;">
+                        <label style="color: #b0b0b0; font-size: 13px; display: block; margin-bottom: 5px;">Category:</label>
+                        <select id="vocabCategory" style="
+                            width: 100%;
+                            padding: 10px;
+                            border-radius: 6px;
+                            border: 1px solid rgba(255,255,255,0.2);
+                            background: #1a1a2e;
+                            color: #fff;
+                            font-size: 14px;
+                        ">
+                            <option value="aesthetic">Aesthetic</option>
+                            <option value="fit">Fit</option>
+                            <option value="pattern">Pattern</option>
+                            <option value="material_feel">Material</option>
+                            <option value="season">Season</option>
+                            <option value="occasion">Occasion</option>
+                            <option value="color_mood">Color Mood</option>
+                            <option value="details">Details</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="color: #b0b0b0; font-size: 13px; display: block; margin-bottom: 5px;">New Tag:</label>
+                        <input type="text" id="vocabNewTag" placeholder="e.g., cyberpunk" style="
+                            width: 100%;
+                            padding: 10px;
+                            border-radius: 6px;
+                            border: 1px solid rgba(255,255,255,0.2);
+                            background: #1a1a2e;
+                            color: #fff;
+                            font-size: 14px;
+                            box-sizing: border-box;
+                        ">
+                    </div>
+                    <button onclick="addVocabTag()" style="
+                        background: linear-gradient(135deg, #81c784, #4caf50);
+                        color: #000;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 6px;
+                        cursor: pointer;
+                        font-weight: 500;
+                        width: 100%;
+                    ">Add Tag</button>
+                </div>
+
+                <!-- Create New Category -->
+                <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px;">
+                    <h4 style="color: #ba68c8; margin-bottom: 15px; font-size: 15px;">📁 Create New Category</h4>
+                    <div style="margin-bottom: 12px;">
+                        <label style="color: #b0b0b0; font-size: 13px; display: block; margin-bottom: 5px;">Category Name:</label>
+                        <input type="text" id="newCategoryName" placeholder="e.g., vibe" style="
+                            width: 100%;
+                            padding: 10px;
+                            border-radius: 6px;
+                            border: 1px solid rgba(255,255,255,0.2);
+                            background: #1a1a2e;
+                            color: #fff;
+                            font-size: 14px;
+                            box-sizing: border-box;
+                        ">
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="color: #b0b0b0; font-size: 13px; display: block; margin-bottom: 5px;">Initial Tags (comma-separated):</label>
+                        <input type="text" id="newCategoryTags" placeholder="e.g., cozy, edgy, playful" style="
+                            width: 100%;
+                            padding: 10px;
+                            border-radius: 6px;
+                            border: 1px solid rgba(255,255,255,0.2);
+                            background: #1a1a2e;
+                            color: #fff;
+                            font-size: 14px;
+                            box-sizing: border-box;
+                        ">
+                    </div>
+                    <button onclick="createVocabCategory()" style="
+                        background: linear-gradient(135deg, #ba68c8, #9c27b0);
+                        color: #fff;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 6px;
+                        cursor: pointer;
+                        font-weight: 500;
+                        width: 100%;
+                    ">Create Category</button>
+                </div>
+            </div>
+
+            <!-- Current Custom Vocabulary Display -->
+            <div id="customVocabDisplay" style="margin-top: 20px; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px;">
+                <h4 style="color: #64b5f6; margin-bottom: 15px; font-size: 15px;">📋 Custom Vocabulary</h4>
+                <div id="customVocabList" style="color: #b0b0b0; font-size: 13px;">
+                    <em>Loading custom vocabulary...</em>
+                </div>
+            </div>
+        </div>
+
+        <!-- Technical Stack Footer -->
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); text-align: center;">
+            <p style="color: #666; font-size: 13px;">
+                <strong>Tech Stack:</strong> Ollama (local inference) • Moondream (vision model) • Supabase (storage) • Python/Flask (backend)
+            </p>
+        </div>
+    </div>
 </body>
 </html>
 """
@@ -2549,7 +4436,10 @@ HTML_TEMPLATE = """
 @app.route("/")
 def index():
     """Serve the main viewer page."""
-    return render_template_string(HTML_TEMPLATE, use_supabase=USE_SUPABASE)
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    return render_template_string(
+        HTML_TEMPLATE, use_supabase=USE_SUPABASE, supabase_url=supabase_url
+    )
 
 
 @app.route("/api/products")
@@ -2618,6 +4508,14 @@ def delete_product(product_id):
         except Exception:
             pass  # Table may not exist
 
+        # Delete from ai_generated_tags table (if exists)
+        try:
+            supabase_client.table("ai_generated_tags").delete().eq(
+                "product_id", product_id
+            ).execute()
+        except Exception:
+            pass  # Table may not exist
+
         # Delete the product itself
         supabase_client.table("products").delete().eq(
             "product_id", product_id
@@ -2637,6 +4535,90 @@ def delete_product(product_id):
                 "success": True,
                 "message": f"Product {product_id} deleted successfully",
                 "images_deleted": images_deleted,
+            }
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/reset-metadata/<product_id>", methods=["DELETE"])
+def reset_product_metadata(product_id):
+    """Reset a product's metadata to its original scraped state.
+
+    This removes:
+    - All curated_metadata entries for this product
+    - All ai_generated_tags entries for this product
+    - All rejected_tags entries for this product
+    - The curation_status entry for this product
+
+    The original scraped product data (including inferred style_tags) remains unchanged.
+    """
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    try:
+        curated_deleted = 0
+        ai_deleted = 0
+        rejected_deleted = 0
+        status_deleted = 0
+
+        # Delete curated metadata
+        try:
+            result = (
+                supabase_client.table("curated_metadata")
+                .delete()
+                .eq("product_id", product_id)
+                .execute()
+            )
+            curated_deleted = len(result.data) if result.data else 0
+        except Exception as e:
+            print(f"Note: Could not delete curated_metadata: {e}")
+
+        # Delete AI-generated tags
+        try:
+            result = (
+                supabase_client.table("ai_generated_tags")
+                .delete()
+                .eq("product_id", product_id)
+                .execute()
+            )
+            ai_deleted = len(result.data) if result.data else 0
+        except Exception as e:
+            print(f"Note: Could not delete ai_generated_tags: {e}")
+
+        # Delete rejected tags
+        try:
+            result = (
+                supabase_client.table("rejected_tags")
+                .delete()
+                .eq("product_id", product_id)
+                .execute()
+            )
+            rejected_deleted = len(result.data) if result.data else 0
+        except Exception as e:
+            print(f"Note: Could not delete rejected_tags: {e}")
+
+        # Delete curation status
+        try:
+            result = (
+                supabase_client.table("curation_status")
+                .delete()
+                .eq("product_id", product_id)
+                .execute()
+            )
+            status_deleted = len(result.data) if result.data else 0
+        except Exception as e:
+            print(f"Note: Could not delete curation_status: {e}")
+
+        return jsonify(
+            {
+                "success": True,
+                "message": f"Product {product_id} reset to original state",
+                "curated_deleted": curated_deleted,
+                "ai_deleted": ai_deleted,
+                "rejected_deleted": rejected_deleted,
+                "status_deleted": status_deleted,
             }
         )
 
@@ -2812,6 +4794,134 @@ def unreject_inferred_tag():
             .execute()
         )
         return jsonify({"success": True, "data": result.data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# AI GENERATED TAGS ENDPOINTS
+# ============================================
+
+
+@app.route("/api/ai_tags/<product_id>")
+def get_ai_generated_tags(product_id):
+    """Get all AI-generated tags for a product."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify([])
+
+    try:
+        result = (
+            supabase_client.table("ai_generated_tags")
+            .select("*")
+            .eq("product_id", product_id)
+            .execute()
+        )
+        return jsonify(result.data or [])
+    except Exception as e:
+        # Table might not exist yet
+        print(f"Error fetching AI tags: {e}")
+        return jsonify([])
+
+
+@app.route("/api/ai_tags", methods=["POST"])
+def save_ai_generated_tag():
+    """Save an AI-generated tag to the database."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json()
+    product_id = data.get("product_id")
+    field_name = data.get("field_name", "style_tag")
+    field_value = data.get("field_value")
+    model_name = data.get("model_name", "moondream")
+    reasoning = data.get("reasoning")
+
+    if not all([product_id, field_value]):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        result = (
+            supabase_client.table("ai_generated_tags")
+            .upsert(
+                {
+                    "product_id": product_id,
+                    "field_name": field_name,
+                    "field_value": field_value,
+                    "model_name": model_name,
+                    "reasoning": reasoning,
+                },
+                on_conflict="product_id,field_name,field_value",
+            )
+            .execute()
+        )
+        return jsonify({"success": True, "data": result.data})
+    except Exception as e:
+        # Handle duplicate entries gracefully
+        if "duplicate" in str(e).lower():
+            return jsonify({"success": True, "message": "Already exists"})
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai_tags", methods=["DELETE"])
+def delete_ai_generated_tag():
+    """Delete an AI-generated tag from the database."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json()
+    product_id = data.get("product_id")
+    field_name = data.get("field_name")
+    field_value = data.get("field_value")
+
+    if not all([product_id, field_name, field_value]):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        result = (
+            supabase_client.table("ai_generated_tags")
+            .delete()
+            .eq("product_id", product_id)
+            .eq("field_name", field_name)
+            .eq("field_value", field_value)
+            .execute()
+        )
+        return jsonify({"success": True, "data": result.data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai_tags/batch", methods=["POST"])
+def save_ai_generated_tags_batch():
+    """Save multiple AI-generated tags for a product at once."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json()
+    product_id = data.get("product_id")
+    tags = data.get("tags", [])
+    model_name = data.get("model_name", "moondream")
+
+    if not product_id or not tags:
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        # Prepare batch insert data
+        records = [
+            {
+                "product_id": product_id,
+                "field_name": "style_tag",
+                "field_value": tag,
+                "model_name": model_name,
+            }
+            for tag in tags
+        ]
+
+        result = (
+            supabase_client.table("ai_generated_tags")
+            .upsert(records, on_conflict="product_id,field_name,field_value")
+            .execute()
+        )
+        return jsonify({"success": True, "count": len(tags), "data": result.data})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -3028,6 +5138,581 @@ def get_dashboard_stats():
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# AI ENDPOINTS
+# ============================================
+
+# Global AI clients (initialized lazily)
+ai_ollama_client = None
+
+
+def get_ai_client():
+    """Get or create the Ollama client."""
+    global ai_ollama_client
+    if ai_ollama_client is None:
+        try:
+            from src.ai import OllamaClient
+
+            ai_ollama_client = OllamaClient()
+        except ImportError as e:
+            print(f"Could not import AI modules: {e}")
+            return None
+    return ai_ollama_client
+
+
+@app.route("/api/ai/status")
+def ai_status():
+    """Check if AI service (Ollama) is available."""
+    import asyncio
+
+    try:
+        from src.ai import OllamaClient
+
+        async def check():
+            async with OllamaClient() as client:
+                available = await client.is_available()
+                models = await client.list_models() if available else []
+                return {"available": available, "models": models}
+
+        result = asyncio.run(check())
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"available": False, "error": str(e)})
+
+
+@app.route("/api/ai/search", methods=["POST"])
+def ai_search():
+    """Semantic search for products using AI embeddings."""
+    import asyncio
+
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json() or {}
+    query = data.get("query", "")
+    limit = data.get("limit", 10)
+
+    if not query:
+        return jsonify({"error": "Query is required"}), 400
+
+    try:
+        from src.ai import EmbeddingsService, OllamaClient
+
+        async def search():
+            async with OllamaClient() as client:
+                if not await client.is_available():
+                    return {"error": "Ollama is not running. Start with: ollama serve"}
+
+                embeddings_service = EmbeddingsService(
+                    supabase_client=supabase_client,
+                    ollama_client=client,
+                )
+
+                # Generate query embedding
+                query_embedding = await embeddings_service.embed_text(query)
+
+                if not query_embedding:
+                    return {"error": "Failed to generate query embedding"}
+
+                # Get all products and calculate similarity in memory
+                # (until pgvector is set up in Supabase)
+                products_result = (
+                    supabase_client.table("products").select("*").execute()
+                )
+                products = products_result.data or []
+
+                if not products:
+                    return {"results": [], "message": "No products in database"}
+
+                # Generate embeddings for products without them and calculate similarity
+                results = []
+                for product in products:
+                    # Build text for embedding
+                    text_parts = [product.get("name", "")]
+                    if product.get("description"):
+                        text_parts.append(product["description"][:300])
+                    if product.get("category"):
+                        text_parts.append(product["category"])
+                    if product.get("colors"):
+                        colors = product["colors"]
+                        if isinstance(colors, list):
+                            text_parts.append(" ".join(colors))
+
+                    product_text = " ".join(text_parts)
+                    product_embedding = await embeddings_service.embed_text(
+                        product_text
+                    )
+
+                    if product_embedding:
+                        similarity = embeddings_service._cosine_similarity(
+                            query_embedding, product_embedding
+                        )
+
+                        if similarity > 0.3:  # Minimum threshold
+                            # Build image URLs
+                            image_paths = product.get("image_paths", [])
+                            supabase_url = (
+                                os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL
+                            )
+                            image_urls = (
+                                [
+                                    f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{path}"
+                                    for path in image_paths
+                                ]
+                                if image_paths
+                                else []
+                            )
+
+                            results.append(
+                                {
+                                    "product_id": product.get("product_id"),
+                                    "name": product.get("name"),
+                                    "price": f"${product.get('price_current', 'N/A')}",
+                                    "category": product.get("category"),
+                                    "image_urls": image_urls,
+                                    "primary_image": (
+                                        image_urls[0] if image_urls else None
+                                    ),
+                                    "similarity": similarity,
+                                }
+                            )
+
+                # Sort by similarity and limit
+                results.sort(key=lambda x: x["similarity"], reverse=True)
+                return {"results": results[:limit]}
+
+        result = asyncio.run(search())
+        return jsonify(result)
+
+    except ImportError as e:
+        return jsonify({"error": f"AI modules not available: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai/generate-tags", methods=["POST"])
+def ai_generate_tags():
+    """Generate style tags for products using AI vision."""
+    import asyncio
+
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json() or {}
+    product_id = data.get("product_id")
+    generate_all = data.get("all", False)
+
+    try:
+        from src.ai import OllamaClient, StyleTagger
+
+        async def generate():
+            async with OllamaClient() as client:
+                if not await client.is_available():
+                    return {"error": "Ollama is not running. Start with: ollama serve"}
+
+                # Pass supabase_client to load custom vocabulary
+                tagger = StyleTagger(
+                    ollama_client=client, supabase_client=supabase_client
+                )
+
+                if product_id:
+                    # Generate tags for a single product
+                    product_result = (
+                        supabase_client.table("products")
+                        .select("*")
+                        .eq("product_id", product_id)
+                        .execute()
+                    )
+
+                    if not product_result.data:
+                        return {"error": f"Product {product_id} not found"}
+
+                    product = product_result.data[0]
+
+                    # Get existing inferred style tags (to avoid duplicates)
+                    existing_style_tags = product.get("style_tags", []) or []
+                    # Normalize to lowercase for comparison - handle both string and object formats
+                    existing_tags_lower = set()
+                    for tag in existing_style_tags:
+                        if isinstance(tag, str):
+                            existing_tags_lower.add(tag.lower().strip())
+                        elif isinstance(tag, dict) and "tag" in tag:
+                            existing_tags_lower.add(tag["tag"].lower().strip())
+
+                    # Also get existing AI-generated tags to avoid duplicates
+                    try:
+                        existing_ai_result = (
+                            supabase_client.table("ai_generated_tags")
+                            .select("field_value")
+                            .eq("product_id", product_id)
+                            .eq("field_name", "style_tag")
+                            .execute()
+                        )
+                        for ai_tag in existing_ai_result.data or []:
+                            existing_tags_lower.add(
+                                ai_tag["field_value"].lower().strip()
+                            )
+                    except Exception:
+                        pass  # Table might not exist yet
+
+                    # Get image URL
+                    image_paths = product.get("image_paths", [])
+                    supabase_url = os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL
+                    image_url = (
+                        f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{image_paths[0]}"
+                        if image_paths
+                        else None
+                    )
+
+                    if not image_url:
+                        return {"error": "Product has no images"}
+
+                    tags = await tagger.generate_tags(
+                        image_url=image_url,
+                        product_name=product.get("name", ""),
+                        product_description=product.get("description", ""),
+                    )
+
+                    # First, deduplicate within the generated tags themselves (case-insensitive)
+                    if tags:
+                        seen = set()
+                        unique_tags = []
+                        for tag in tags:
+                            tag_lower = tag.lower().strip()
+                            if tag_lower not in seen:
+                                seen.add(tag_lower)
+                                unique_tags.append(tag)
+                        tags = unique_tags
+
+                    # Filter out tags that already exist (case-insensitive comparison)
+                    filtered_count = 0
+                    original_tags = tags or []
+                    if tags:
+                        original_count = len(tags)
+                        tags = [
+                            tag
+                            for tag in tags
+                            if tag.lower().strip() not in existing_tags_lower
+                        ]
+                        filtered_count = original_count - len(tags)
+                        if filtered_count > 0:
+                            print(f"Filtered out {filtered_count} duplicate tags")
+
+                    # Save tags to ai_generated_tags table (separate from inferred/curated)
+                    if tags:
+                        records = [
+                            {
+                                "product_id": product_id,
+                                "field_name": "style_tag",
+                                "field_value": tag,
+                                "model_name": "moondream",
+                            }
+                            for tag in tags
+                        ]
+                        try:
+                            supabase_client.table("ai_generated_tags").upsert(
+                                records, on_conflict="product_id,field_name,field_value"
+                            ).execute()
+                        except Exception as e:
+                            print(f"Warning: Could not save AI tags to database: {e}")
+
+                    return {
+                        "tags": tags,
+                        "product_id": product_id,
+                        "filtered_duplicates": filtered_count,
+                        "original_count": len(original_tags),
+                    }
+
+                elif generate_all:
+                    # Generate tags for all products without tags
+                    products_result = (
+                        supabase_client.table("products").select("*").execute()
+                    )
+                    products = products_result.data or []
+
+                    # Filter to products without tags
+                    products_to_tag = [
+                        p
+                        for p in products
+                        if not p.get("style_tags") or len(p.get("style_tags", [])) == 0
+                    ]
+
+                    count = 0
+                    supabase_url = os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL
+
+                    for product in products_to_tag:
+                        image_paths = product.get("image_paths", [])
+                        if not image_paths:
+                            continue
+
+                        # Get existing inferred style tags for this product
+                        existing_style_tags = product.get("style_tags", []) or []
+                        existing_tags_lower = set()
+                        for tag in existing_style_tags:
+                            if isinstance(tag, str):
+                                existing_tags_lower.add(tag.lower().strip())
+                            elif isinstance(tag, dict) and "tag" in tag:
+                                existing_tags_lower.add(tag["tag"].lower().strip())
+
+                        # Also get existing AI-generated tags
+                        try:
+                            existing_ai_result = (
+                                supabase_client.table("ai_generated_tags")
+                                .select("field_value")
+                                .eq("product_id", product.get("product_id"))
+                                .eq("field_name", "style_tag")
+                                .execute()
+                            )
+                            for ai_tag in existing_ai_result.data or []:
+                                existing_tags_lower.add(
+                                    ai_tag["field_value"].lower().strip()
+                                )
+                        except Exception:
+                            pass
+
+                        image_url = f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{image_paths[0]}"
+
+                        tags = await tagger.generate_tags(
+                            image_url=image_url,
+                            product_name=product.get("name", ""),
+                            product_description=product.get("description", ""),
+                        )
+
+                        # Filter out duplicates
+                        if tags:
+                            tags = [
+                                tag
+                                for tag in tags
+                                if tag.lower().strip() not in existing_tags_lower
+                            ]
+
+                        if tags:
+                            # Save to ai_generated_tags table
+                            records = [
+                                {
+                                    "product_id": product.get("product_id"),
+                                    "field_name": "style_tag",
+                                    "field_value": tag,
+                                    "model_name": "moondream",
+                                }
+                                for tag in tags
+                            ]
+                            try:
+                                supabase_client.table("ai_generated_tags").upsert(
+                                    records,
+                                    on_conflict="product_id,field_name,field_value",
+                                ).execute()
+                                count += 1
+                            except Exception as e:
+                                print(f"Warning: Could not save AI tags: {e}")
+
+                    return {
+                        "count": count,
+                        "message": f"Generated tags for {count} products",
+                    }
+
+                else:
+                    return {"error": "Specify product_id or set all=true"}
+
+        result = asyncio.run(generate())
+        return jsonify(result)
+
+    except ImportError as e:
+        return jsonify({"error": f"AI modules not available: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/ai/chat", methods=["POST"])
+def ai_chat():
+    """Chat with the AI fashion assistant."""
+    import asyncio
+
+    data = request.get_json() or {}
+    messages = data.get("messages", [])
+
+    if not messages:
+        return jsonify({"error": "Messages are required"}), 400
+
+    try:
+        from src.ai import ChatAssistant, OllamaClient
+
+        async def chat():
+            async with OllamaClient() as client:
+                if not await client.is_available():
+                    return {"error": "Ollama is not running. Start with: ollama serve"}
+
+                # Create chat assistant with Supabase if available
+                assistant = ChatAssistant(
+                    supabase_client=supabase_client if USE_SUPABASE else None,
+                    ollama_client=client,
+                )
+
+                response = await assistant.chat(
+                    messages=messages,
+                    include_context=USE_SUPABASE,  # Only use product context if Supabase is available
+                )
+
+                return {"response": response}
+
+        result = asyncio.run(chat())
+        return jsonify(result)
+
+    except ImportError as e:
+        return jsonify({"error": f"AI modules not available: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# VOCABULARY MANAGEMENT ENDPOINTS
+# ============================================
+
+
+@app.route("/api/vocabulary", methods=["GET"])
+def get_vocabulary():
+    """Get all custom vocabulary from the database."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"success": False, "error": "Supabase not configured"}), 400
+
+    try:
+        result = supabase_client.table("custom_vocabulary").select("*").execute()
+
+        # Group by category
+        vocabulary = {}
+        for item in result.data or []:
+            category = item.get("category")
+            tag = item.get("tag")
+            if category and tag:
+                if category not in vocabulary:
+                    vocabulary[category] = []
+                vocabulary[category].append(tag)
+
+        return jsonify({"success": True, "vocabulary": vocabulary})
+
+    except Exception as e:
+        # Table might not exist yet
+        if "relation" in str(e).lower() and "does not exist" in str(e).lower():
+            return jsonify({"success": True, "vocabulary": {}})
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/vocabulary/tag", methods=["POST"])
+def add_vocabulary_tag():
+    """Add a new tag to an existing or new category."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"success": False, "error": "Supabase not configured"}), 400
+
+    data = request.get_json() or {}
+    category = data.get("category", "").strip().lower()
+    tag = data.get("tag", "").strip().lower()
+
+    if not category or not tag:
+        return (
+            jsonify({"success": False, "error": "Category and tag are required"}),
+            400,
+        )
+
+    try:
+        # Insert the new tag
+        supabase_client.table("custom_vocabulary").upsert(
+            {"category": category, "tag": tag}, on_conflict="category,tag"
+        ).execute()
+
+        return jsonify(
+            {"success": True, "message": f"Tag '{tag}' added to '{category}'"}
+        )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/vocabulary/tag", methods=["DELETE"])
+def delete_vocabulary_tag():
+    """Delete a tag from a category."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"success": False, "error": "Supabase not configured"}), 400
+
+    data = request.get_json() or {}
+    category = data.get("category", "").strip().lower()
+    tag = data.get("tag", "").strip().lower()
+
+    if not category or not tag:
+        return (
+            jsonify({"success": False, "error": "Category and tag are required"}),
+            400,
+        )
+
+    try:
+        supabase_client.table("custom_vocabulary").delete().eq("category", category).eq(
+            "tag", tag
+        ).execute()
+
+        return jsonify(
+            {"success": True, "message": f"Tag '{tag}' removed from '{category}'"}
+        )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/vocabulary/category", methods=["POST"])
+def create_vocabulary_category():
+    """Create a new category with initial tags."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"success": False, "error": "Supabase not configured"}), 400
+
+    data = request.get_json() or {}
+    category = data.get("category", "").strip().lower()
+    tags = data.get("tags", [])
+
+    if not category:
+        return jsonify({"success": False, "error": "Category name is required"}), 400
+
+    if not tags or not isinstance(tags, list):
+        return jsonify({"success": False, "error": "At least one tag is required"}), 400
+
+    try:
+        # Insert all tags for the new category
+        records = [
+            {"category": category, "tag": tag.strip().lower()}
+            for tag in tags
+            if tag.strip()
+        ]
+
+        if records:
+            supabase_client.table("custom_vocabulary").upsert(
+                records, on_conflict="category,tag"
+            ).execute()
+
+        return jsonify(
+            {
+                "success": True,
+                "message": f"Category '{category}' created with {len(records)} tags",
+            }
+        )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/vocabulary/category/<category>", methods=["DELETE"])
+def delete_vocabulary_category(category):
+    """Delete an entire custom category."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"success": False, "error": "Supabase not configured"}), 400
+
+    try:
+        supabase_client.table("custom_vocabulary").delete().eq(
+            "category", category.lower()
+        ).execute()
+
+        return jsonify({"success": True, "message": f"Category '{category}' deleted"})
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/images/<category>/<product_id>/<filename>")

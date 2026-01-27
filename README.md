@@ -26,7 +26,7 @@
 - **Beautiful Web Interface** - Browse all scraped products with images
 - **Category Sidebar** - Filter products by category with item counts
 - **Image Gallery** - View all product images with thumbnails
-- **Product Details** - Name, price, description, materials, sizes, colors
+- **Product Details** - Name, price, description, materials, composition, sizes, colors
 
 ### 🏷️ Smart Tagging System
 Three types of style tags with visual distinction:
@@ -96,11 +96,8 @@ The product viewer is a web application for browsing and curating products.
 ### Starting the Viewer
 
 ```bash
-# Standard viewer
+# Start the viewer (with AI tagging features)
 python viewer.py --supabase
-
-# AI-enhanced viewer (with AI tagging features)
-python viewer_ai.py --supabase
 ```
 
 ### Viewer Features
@@ -132,7 +129,7 @@ python viewer_ai.py --supabase
 
 ## 🤖 AI Features
 
-The AI-enhanced viewer (`viewer_ai.py`) includes powerful AI capabilities.
+The viewer includes powerful AI capabilities.
 
 ### Requirements for AI Features
 
@@ -247,8 +244,7 @@ The project uses Supabase for cloud storage:
 ```
 refitd/
 ├── 📄 main.py                 # Scraper entry point
-├── 📄 viewer.py               # Standard product viewer
-├── 📄 viewer_ai.py            # AI-enhanced product viewer
+├── 📄 viewer.py               # Product viewer with AI features
 ├── 📄 requirements.txt        # Python dependencies
 ├── 📄 supabase_schema.sql     # Database schema
 │

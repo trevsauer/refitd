@@ -89,6 +89,8 @@ class SupabaseLoader:
         currency: str = "USD",
         description: Optional[str] = None,
         colors: Optional[list[str]] = None,
+        color: Optional[str] = None,
+        parent_product_id: Optional[str] = None,
         sizes: Optional[list] = None,
         materials: Optional[list[str]] = None,
         fit: Optional[str] = None,
@@ -96,6 +98,7 @@ class SupabaseLoader:
         style_tags: Optional[list[dict]] = None,
         formality: Optional[dict] = None,
         image_urls: Optional[list[str]] = None,
+        composition: Optional[str] = None,
     ) -> dict:
         """
         Save a product to Supabase.
@@ -109,7 +112,9 @@ class SupabaseLoader:
             price_original: Original price (if on sale)
             currency: Currency code
             description: Product description
-            colors: Available colors
+            colors: Available colors (all colors for the product)
+            color: Single color for this variant (if expanded by color)
+            parent_product_id: Original product ID if this is a color variant
             sizes: Available sizes (can be list of strings or list of dicts with availability)
             materials: Material composition
             fit: Fit type (slim, regular, etc.)
@@ -117,6 +122,7 @@ class SupabaseLoader:
             style_tags: Style tags with reasoning
             formality: Formality assessment
             image_urls: List of image URLs to download and store
+            composition: Fabric composition string (e.g., "100% cotton")
 
         Returns:
             Dict with saved product info including storage paths
@@ -154,6 +160,8 @@ class SupabaseLoader:
             "currency": currency,
             "description": description,
             "colors": colors or [],
+            "color": color,  # Single color for this variant (if expanded by color)
+            "parent_product_id": parent_product_id,  # Original product ID if this is a color variant
             "sizes": sizes_simple,  # Keep simple list for backward compatibility
             "sizes_availability": sizes_availability,  # New JSONB column with availability
             "materials": materials or [],
@@ -161,6 +169,7 @@ class SupabaseLoader:
             "weight": weight,
             "style_tags": style_tags,
             "formality": formality,
+            "composition": composition,  # Fabric composition (e.g., "100% cotton")
             "image_paths": image_paths,
             "image_count": len(image_paths),
             "scraped_at": datetime.utcnow().isoformat() + "Z",

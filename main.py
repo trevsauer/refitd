@@ -27,9 +27,18 @@ console = Console()
 # Available categories with descriptions
 AVAILABLE_CATEGORIES = {
     # Clothing
-    "tshirts": {"url": "/us/en/man-tshirts-l855.html", "desc": "T-Shirts & casual tops"},
-    "shirts": {"url": "/us/en/man-shirts-l737.html", "desc": "Dress shirts & button-ups"},
-    "trousers": {"url": "/us/en/man-trousers-l838.html", "desc": "Trousers & dress pants"},
+    "tshirts": {
+        "url": "/us/en/man-tshirts-l855.html",
+        "desc": "T-Shirts & casual tops",
+    },
+    "shirts": {
+        "url": "/us/en/man-shirts-l737.html",
+        "desc": "Dress shirts & button-ups",
+    },
+    "trousers": {
+        "url": "/us/en/man-trousers-l838.html",
+        "desc": "Trousers & dress pants",
+    },
     "jeans": {"url": "/us/en/man-jeans-l659.html", "desc": "Jeans & denim"},
     "shorts": {"url": "/us/en/man-shorts-l722.html", "desc": "Shorts & bermudas"},
     "jackets": {"url": "/us/en/man-jackets-l715.html", "desc": "Jackets & outerwear"},
@@ -44,6 +53,7 @@ AVAILABLE_CATEGORIES = {
 
 class CustomHelpFormatter(argparse.RawDescriptionHelpFormatter):
     """Custom formatter that preserves formatting and adds width."""
+
     def __init__(self, prog):
         super().__init__(prog, max_help_position=40, width=100)
 
@@ -52,10 +62,12 @@ def parse_args():
     """Parse command line arguments."""
 
     # Build category list for help text
-    category_list = "\n".join([
-        f"    {name:<14} {info['desc']}"
-        for name, info in AVAILABLE_CATEGORIES.items()
-    ])
+    category_list = "\n".join(
+        [
+            f"    {name:<14} {info['desc']}"
+            for name, info in AVAILABLE_CATEGORIES.items()
+        ]
+    )
 
     epilog = f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -159,12 +171,12 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
 
     # Scraping options group
     scrape_group = parser.add_argument_group(
-        "Scraping Options",
-        "Control what and how much to scrape"
+        "Scraping Options", "Control what and how much to scrape"
     )
 
     scrape_group.add_argument(
-        "--products", "-n",
+        "--products",
+        "-n",
         type=int,
         default=2,
         metavar="NUM",
@@ -172,13 +184,15 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
     )
 
     scrape_group.add_argument(
-        "--all", "-a",
+        "--all",
+        "-a",
         action="store_true",
         help="Scrape ALL products (overrides --products)",
     )
 
     scrape_group.add_argument(
-        "--categories", "-c",
+        "--categories",
+        "-c",
         type=str,
         nargs="+",
         default=list(AVAILABLE_CATEGORIES.keys()),
@@ -192,10 +206,15 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
         help="Skip image downloads (faster, metadata only)",
     )
 
+    scrape_group.add_argument(
+        "--no-expand-colors",
+        action="store_true",
+        help="Don't expand products by color (default: expand colors to create separate entries)",
+    )
+
     # Browser options group
     browser_group = parser.add_argument_group(
-        "Browser Options",
-        "Control the browser behavior"
+        "Browser Options", "Control the browser behavior"
     )
 
     browser_group.add_argument(
@@ -209,8 +228,7 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
 
     # Storage options group
     storage_group = parser.add_argument_group(
-        "Storage Options",
-        "Control where data is saved"
+        "Storage Options", "Control where data is saved"
     )
 
     storage_group.add_argument(
@@ -226,7 +244,8 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
     )
 
     storage_group.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=str,
         default=None,
         metavar="DIR",
@@ -235,12 +254,12 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
 
     # Database management group
     db_group = parser.add_argument_group(
-        "Database Management",
-        "Manage tracking and product databases"
+        "Database Management", "Manage tracking and product databases"
     )
 
     db_group.add_argument(
-        "--force", "-f",
+        "--force",
+        "-f",
         action="store_true",
         help="Force re-scrape products (ignore tracking)",
     )
@@ -266,7 +285,7 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
     # AI features group
     ai_group = parser.add_argument_group(
         "AI Features",
-        "AI-powered features (requires Ollama: brew install ollama && ollama serve)"
+        "AI-powered features (requires Ollama: brew install ollama && ollama serve)",
     )
 
     ai_group.add_argument(
@@ -331,7 +350,11 @@ async def ai_status():
 
                 for model, purpose in required.items():
                     found = any(model in m for m in models)
-                    status = "[green]✓[/green]" if found else "[red]✗ (run: ollama pull " + model + ")[/red]"
+                    status = (
+                        "[green]✓[/green]"
+                        if found
+                        else "[red]✗ (run: ollama pull " + model + ")[/red]"
+                    )
                     console.print(f"  {model:<20} {purpose:<25} {status}")
 
                 return 0
@@ -340,7 +363,9 @@ async def ai_status():
                 console.print("\n[yellow]To start Ollama:[/yellow]")
                 console.print("  1. Install: brew install ollama")
                 console.print("  2. Start: ollama serve")
-                console.print("  3. Pull models: ollama pull phi3.5 moondream nomic-embed-text")
+                console.print(
+                    "  3. Pull models: ollama pull phi3.5 moondream nomic-embed-text"
+                )
                 return 1
 
     except ImportError as e:
@@ -356,7 +381,7 @@ async def ai_generate_tags():
     console.print("\n[bold cyan]Generating Style Tags[/bold cyan]\n")
 
     try:
-        from src.ai import StyleTagger, OllamaClient
+        from src.ai import OllamaClient, StyleTagger
         from src.loaders.supabase_loader import SupabaseLoader
 
         loader = SupabaseLoader()
@@ -367,19 +392,22 @@ async def ai_generate_tags():
 
         # Filter to products without tags or with empty tags
         products_to_tag = [
-            p for p in products
-            if not p.get("tags") or len(p.get("tags", [])) == 0
+            p for p in products if not p.get("tags") or len(p.get("tags", [])) == 0
         ]
 
         if not products_to_tag:
             console.print("[yellow]All products already have tags![/yellow]")
             return 0
 
-        console.print(f"[cyan]Found {len(products_to_tag)} products without tags[/cyan]")
+        console.print(
+            f"[cyan]Found {len(products_to_tag)} products without tags[/cyan]"
+        )
 
         async with OllamaClient() as client:
             if not await client.is_available():
-                console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+                console.print(
+                    "[red]Ollama is not running. Start with: ollama serve[/red]"
+                )
                 return 1
 
             tagger = StyleTagger(ollama_client=client)
@@ -390,9 +418,9 @@ async def ai_generate_tags():
             saved = 0
             for product_id, tags in results.items():
                 try:
-                    loader.client.table("products").update({
-                        "tags": tags
-                    }).eq("id", product_id).execute()
+                    loader.client.table("products").update({"tags": tags}).eq(
+                        "id", product_id
+                    ).execute()
                     saved += 1
                     console.print(f"  [green]✓[/green] {product_id}: {tags}")
                 except Exception as e:
@@ -427,11 +455,15 @@ async def ai_generate_embeddings():
             console.print("[yellow]No products found in database[/yellow]")
             return 0
 
-        console.print(f"[cyan]Generating embeddings for {len(products)} products[/cyan]")
+        console.print(
+            f"[cyan]Generating embeddings for {len(products)} products[/cyan]"
+        )
 
         async with OllamaClient() as client:
             if not await client.is_available():
-                console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+                console.print(
+                    "[red]Ollama is not running. Start with: ollama serve[/red]"
+                )
                 return 1
 
             embeddings_service = EmbeddingsService(
@@ -446,13 +478,23 @@ async def ai_generate_embeddings():
                 # Try to store in database
                 try:
                     stored = await embeddings_service.store_embeddings(embeddings)
-                    console.print(f"\n[green]Stored {stored} embeddings in database[/green]")
+                    console.print(
+                        f"\n[green]Stored {stored} embeddings in database[/green]"
+                    )
                 except Exception as e:
-                    console.print(f"\n[yellow]Could not store in database: {e}[/yellow]")
-                    console.print("[dim]Embeddings were generated but need pgvector setup[/dim]")
-                    console.print("\n[cyan]Run this SQL in Supabase to enable embedding storage:[/cyan]")
+                    console.print(
+                        f"\n[yellow]Could not store in database: {e}[/yellow]"
+                    )
+                    console.print(
+                        "[dim]Embeddings were generated but need pgvector setup[/dim]"
+                    )
+                    console.print(
+                        "\n[cyan]Run this SQL in Supabase to enable embedding storage:[/cyan]"
+                    )
                     console.print("[dim]CREATE EXTENSION IF NOT EXISTS vector;[/dim]")
-                    console.print("[dim]ALTER TABLE products ADD COLUMN IF NOT EXISTS embedding vector(768);[/dim]")
+                    console.print(
+                        "[dim]ALTER TABLE products ADD COLUMN IF NOT EXISTS embedding vector(768);[/dim]"
+                    )
 
             return 0
 
@@ -475,15 +517,20 @@ async def ai_chat():
         supabase_client = None
         try:
             from src.loaders.supabase_loader import SupabaseLoader
+
             loader = SupabaseLoader()
             supabase_client = loader.client
             console.print("[dim]Connected to Supabase for product context[/dim]")
         except Exception:
-            console.print("[yellow]Running without product context (Supabase not available)[/yellow]")
+            console.print(
+                "[yellow]Running without product context (Supabase not available)[/yellow]"
+            )
 
         async with OllamaClient() as client:
             if not await client.is_available():
-                console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+                console.print(
+                    "[red]Ollama is not running. Start with: ollama serve[/red]"
+                )
                 return 1
 
             assistant = ChatAssistant(
@@ -504,16 +551,20 @@ async def ai_chat():
 
 async def ai_tag_product(product_id: str):
     """Generate tags for a specific product."""
-    console.print(f"\n[bold cyan]Generating Tags for Product: {product_id}[/bold cyan]\n")
+    console.print(
+        f"\n[bold cyan]Generating Tags for Product: {product_id}[/bold cyan]\n"
+    )
 
     try:
-        from src.ai import StyleTagger, OllamaClient
+        from src.ai import OllamaClient, StyleTagger
         from src.loaders.supabase_loader import SupabaseLoader
 
         loader = SupabaseLoader()
 
         # Get the product
-        response = loader.client.table("products").select("*").eq("id", product_id).execute()
+        response = (
+            loader.client.table("products").select("*").eq("id", product_id).execute()
+        )
 
         if not response.data:
             console.print(f"[red]Product {product_id} not found[/red]")
@@ -529,7 +580,9 @@ async def ai_tag_product(product_id: str):
 
         async with OllamaClient() as client:
             if not await client.is_available():
-                console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+                console.print(
+                    "[red]Ollama is not running. Start with: ollama serve[/red]"
+                )
                 return 1
 
             tagger = StyleTagger(ollama_client=client)
@@ -546,9 +599,9 @@ async def ai_tag_product(product_id: str):
 
             # Optionally save to database
             try:
-                loader.client.table("products").update({
-                    "tags": tags
-                }).eq("id", product_id).execute()
+                loader.client.table("products").update({"tags": tags}).eq(
+                    "id", product_id
+                ).execute()
                 console.print("[green]✓ Tags saved to database[/green]")
             except Exception as e:
                 console.print(f"[yellow]Could not save tags: {e}[/yellow]")
@@ -599,6 +652,7 @@ async def run_pipeline(
     force_rescrape: bool = False,
     use_supabase: bool = True,
     save_local: bool = False,
+    expand_colors: bool = False,
 ) -> dict:
     """Run the ETL pipeline with given config."""
     pipeline = ZaraPipeline(
@@ -606,6 +660,7 @@ async def run_pipeline(
         force_rescrape=force_rescrape,
         use_supabase=use_supabase,
         save_local=save_local,
+        expand_colors=expand_colors,
     )
     return await pipeline.run()
 
@@ -643,8 +698,12 @@ def main():
 
     # Handle --wipe flag: wipe all products and exit
     if args.wipe:
-        console.print("\n[bold red]⚠️  WARNING: This will DELETE ALL products from Supabase![/bold red]")
-        console.print("[yellow]This will also clear the local tracking database.[/yellow]")
+        console.print(
+            "\n[bold red]⚠️  WARNING: This will DELETE ALL products from Supabase![/bold red]"
+        )
+        console.print(
+            "[yellow]This will also clear the local tracking database.[/yellow]"
+        )
         console.print("[yellow]This action cannot be undone.[/yellow]\n")
 
         confirm = input("Type 'DELETE ALL' to confirm: ")
@@ -652,13 +711,18 @@ def main():
             try:
                 # Wipe Supabase
                 from src.loaders.supabase_loader import SupabaseLoader
+
                 loader = SupabaseLoader()
                 deleted_count = loader.wipe_all()
-                console.print(f"\n[green]✓ Wiped {deleted_count} products from Supabase[/green]")
+                console.print(
+                    f"\n[green]✓ Wiped {deleted_count} products from Supabase[/green]"
+                )
 
                 # Also clear the tracking database
                 tracking_deleted = tracker.clear()
-                console.print(f"[green]✓ Cleared {tracking_deleted} records from tracking database[/green]")
+                console.print(
+                    f"[green]✓ Cleared {tracking_deleted} records from tracking database[/green]"
+                )
 
                 return 0
             except Exception as e:
@@ -707,6 +771,7 @@ def main():
                 force_rescrape=args.force,
                 use_supabase=use_supabase,
                 save_local=save_local,
+                expand_colors=not args.no_expand_colors,  # Default is True (expand colors)
             )
         )
 

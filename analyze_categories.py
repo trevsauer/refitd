@@ -5,25 +5,66 @@ Scrolls each category page fully and counts products.
 """
 
 import asyncio
+
 from playwright.async_api import async_playwright
 from playwright_stealth import stealth_async
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
 console = Console()
 
 CATEGORIES = [
-    {"name": "T-Shirts", "slug": "tshirts", "url": "https://www.zara.com/us/en/man-tshirts-l855.html"},
-    {"name": "Shirts", "slug": "shirts", "url": "https://www.zara.com/us/en/man-shirts-l737.html"},
-    {"name": "Trousers", "slug": "trousers", "url": "https://www.zara.com/us/en/man-trousers-l838.html"},
-    {"name": "Jeans", "slug": "jeans", "url": "https://www.zara.com/us/en/man-jeans-l659.html"},
-    {"name": "Shorts", "slug": "shorts", "url": "https://www.zara.com/us/en/man-shorts-l722.html"},
-    {"name": "Jackets", "slug": "jackets", "url": "https://www.zara.com/us/en/man-jackets-l715.html"},
-    {"name": "Blazers", "slug": "blazers", "url": "https://www.zara.com/us/en/man-blazers-l608.html"},
-    {"name": "Suits", "slug": "suits", "url": "https://www.zara.com/us/en/man-suits-l599.html"},
-    {"name": "Shoes", "slug": "shoes", "url": "https://www.zara.com/us/en/man-shoes-l769.html"},
-    {"name": "New In", "slug": "new-in", "url": "https://www.zara.com/us/en/man-new-in-l716.html"},
+    {
+        "name": "T-Shirts",
+        "slug": "tshirts",
+        "url": "https://www.zara.com/us/en/man-tshirts-l855.html",
+    },
+    {
+        "name": "Shirts",
+        "slug": "shirts",
+        "url": "https://www.zara.com/us/en/man-shirts-l737.html",
+    },
+    {
+        "name": "Trousers",
+        "slug": "trousers",
+        "url": "https://www.zara.com/us/en/man-trousers-l838.html",
+    },
+    {
+        "name": "Jeans",
+        "slug": "jeans",
+        "url": "https://www.zara.com/us/en/man-jeans-l659.html",
+    },
+    {
+        "name": "Shorts",
+        "slug": "shorts",
+        "url": "https://www.zara.com/us/en/man-shorts-l722.html",
+    },
+    {
+        "name": "Jackets",
+        "slug": "jackets",
+        "url": "https://www.zara.com/us/en/man-jackets-l715.html",
+    },
+    {
+        "name": "Blazers",
+        "slug": "blazers",
+        "url": "https://www.zara.com/us/en/man-blazers-l608.html",
+    },
+    {
+        "name": "Suits",
+        "slug": "suits",
+        "url": "https://www.zara.com/us/en/man-suits-l599.html",
+    },
+    {
+        "name": "Shoes",
+        "slug": "shoes",
+        "url": "https://www.zara.com/us/en/man-shoes-l769.html",
+    },
+    {
+        "name": "New In",
+        "slug": "new-in",
+        "url": "https://www.zara.com/us/en/man-new-in-l716.html",
+    },
 ]
 
 
@@ -42,7 +83,8 @@ async def count_category_products(page, url: str) -> int:
         await asyncio.sleep(1)
 
         # Count products
-        count = await page.evaluate(r"""
+        count = await page.evaluate(
+            r"""
             () => {
                 const products = new Set();
                 document.querySelectorAll('a').forEach(link => {
@@ -51,7 +93,8 @@ async def count_category_products(page, url: str) -> int:
                 });
                 return products.size;
             }
-        """)
+        """
+        )
 
         if count == previous_count:
             same_count_times += 1
@@ -89,11 +132,25 @@ async def analyze_categories():
         for cat in CATEGORIES:
             console.print(f"  {cat['name']}...", end=" ")
             try:
-                count = await count_category_products(page, cat['url'])
-                results.append({"name": cat["name"], "slug": cat["slug"], "url": cat["url"], "count": count})
+                count = await count_category_products(page, cat["url"])
+                results.append(
+                    {
+                        "name": cat["name"],
+                        "slug": cat["slug"],
+                        "url": cat["url"],
+                        "count": count,
+                    }
+                )
                 console.print(f"[green]{count}[/green]")
             except Exception as e:
-                results.append({"name": cat["name"], "slug": cat["slug"], "url": cat["url"], "count": 0})
+                results.append(
+                    {
+                        "name": cat["name"],
+                        "slug": cat["slug"],
+                        "url": cat["url"],
+                        "count": 0,
+                    }
+                )
                 console.print(f"[red]Error[/red]")
 
         await browser.close()
@@ -119,7 +176,9 @@ async def analyze_categories():
     console.print("\n[cyan]settings.py config:[/cyan]")
     for r in sorted(results, key=lambda x: x["name"]):
         if r["count"] > 0:
-            console.print(f'"{r["slug"]}": "{r["url"].replace("https://www.zara.com", "")}",  # {r["count"]}')
+            console.print(
+                f'"{r["slug"]}": "{r["url"].replace("https://www.zara.com", "")}",  # {r["count"]}'
+            )
 
 
 if __name__ == "__main__":

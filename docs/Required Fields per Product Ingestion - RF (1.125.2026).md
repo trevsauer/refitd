@@ -101,6 +101,7 @@ Raw retailer-provided text is stored without interpretation or normalization.
 |-------|-------------|
 | **Full product description** | Verbatim text |
 | **Raw materials text** | Verbatim, if present |
+| **Composition** | Fabric composition breakdown (e.g., "100% cotton", "49% polyamide, 29% polyester...") |
 | **Raw color name(s)** | Retailer-provided |
 
 > These fields are inputs to the tagging system but are not directly consumed by the generator.

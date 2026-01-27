@@ -17,12 +17,15 @@ CREATE TABLE IF NOT EXISTS products (
     price_original DECIMAL(10, 2),
     currency TEXT DEFAULT 'USD',
 
-    -- Product details
+-- Product details
     description TEXT,
-    colors TEXT[] DEFAULT '{}',
+    colors TEXT[] DEFAULT '{}',       -- All available colors for the product
+    color TEXT,                       -- Single color for this variant (if expanded)
+    parent_product_id TEXT,           -- Original product ID if this is a color variant
     sizes TEXT[] DEFAULT '{}',
     materials TEXT[] DEFAULT '{}',
     fit TEXT,
+    composition TEXT,  -- Fabric composition (e.g., "100% cotton", "49% polyamide, 29% polyester...")
 
     -- Inferred product attributes
     weight JSONB,           -- Weight info: {"value": "light/medium/heavy", "reasoning": [...]}
@@ -51,6 +54,13 @@ CREATE INDEX IF NOT EXISTS idx_products_price ON products(price_current);
 ALTER TABLE products ADD COLUMN IF NOT EXISTS weight JSONB;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS style_tags JSONB;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS formality JSONB;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS composition TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS color TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS parent_product_id TEXT;
+
+-- Index for efficient variant lookups
+CREATE INDEX IF NOT EXISTS idx_products_parent_product_id ON products(parent_product_id);
+CREATE INDEX IF NOT EXISTS idx_products_color ON products(color);
 
 -- ============================================
 -- MIGRATION: Update sizes column to JSONB for availability tracking

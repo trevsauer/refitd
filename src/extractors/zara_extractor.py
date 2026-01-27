@@ -21,6 +21,15 @@ from config.settings import config, ScraperConfig
 console = Console()
 
 
+def slugify_color(color_name: str) -> str:
+    """Convert a color name to a URL-safe slug for product IDs."""
+    # Convert to lowercase, replace spaces and special chars with underscore
+    slug = color_name.lower()
+    slug = re.sub(r"[^a-z0-9]+", "_", slug)
+    slug = slug.strip("_")
+    return slug or "unknown"
+
+
 @dataclass
 class RawProductData:
     """Raw product data extracted from Zara."""
@@ -33,12 +42,19 @@ class RawProductData:
     price_original: Optional[float] = None
     currency: str = "USD"
     description: Optional[str] = None
-    colors: list = field(default_factory=list)
+    colors: list = field(default_factory=list)  # All available colors (for reference)
+    color: Optional[str] = None  # Single color for this variant (if expanded)
+    parent_product_id: Optional[str] = (
+        None  # Original product ID if this is a color variant
+    )
     sizes: list = field(default_factory=list)
     materials: list = field(default_factory=list)
     image_urls: list = field(default_factory=list)
     fit: Optional[str] = None  # slim, relaxed, wide, regular, etc.
     weight: Optional[str] = None  # light, medium, heavy
+    composition: Optional[str] = (
+        None  # e.g., "100% cotton" or "49% polyamide, 29% polyester, 14% acrylic, 8% wool"
+    )
     scraped_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
 
 
@@ -142,7 +158,10 @@ class ZaraExtractor:
         self, category_key: str, limit: Optional[int] = None
     ) -> list[str]:
         """
-        Get product URLs from a category page.
+        Get product URLs from a category page, handling pagination.
+
+        Uses Zara's viewPayload data structure which contains all product info
+        including products not yet rendered in the DOM (virtual rendering).
 
         Args:
             category_key: Key from config categories (e.g., 'tshirts', 'pants', 'jackets')
@@ -158,67 +177,235 @@ class ZaraExtractor:
             console.print(f"[bold red]Unknown category: {category_key}[/bold red]")
             return []
 
-        url = f"{self.config.base_url}{category_path}"
-        console.print(f"[cyan]Fetching category: {category_key} from {url}[/cyan]")
+        base_url = f"{self.config.base_url}{category_path}"
+        console.print(f"[cyan]Fetching category: {category_key} from {base_url}[/cyan]")
 
-        page = await self._create_stealth_page()
+        all_product_links = {}  # Use dict: product_id -> url to avoid duplicates
+        current_page = 1
+        max_pages = 20  # Safety limit
 
-        try:
-            await page.goto(
-                url, wait_until="networkidle", timeout=self.config.timeout_ms
-            )
-            await self._random_delay()
+        while current_page <= max_pages and len(all_product_links) < limit:
+            # Build URL with pagination parameter
+            if current_page == 1:
+                url = base_url
+            else:
+                url = f"{base_url}?page={current_page}"
 
-            # Scroll to load more products (lazy loading)
-            await self._scroll_page(page)
+            page = await self._create_stealth_page()
 
-            # Extract product links - Zara uses product-link class
-            product_links = await page.evaluate(
-                """
-                () => {
-                    const links = [];
-                    // Try multiple selectors for product links
-                    const selectors = [
-                        'a.product-link',
-                        'a[href*="-p"][href$=".html"]',
-                        '.product-grid-product a',
-                        '[data-productid] a'
-                    ];
+            try:
+                await page.goto(
+                    url, wait_until="networkidle", timeout=self.config.timeout_ms
+                )
+                await self._random_delay()
 
-                    for (const selector of selectors) {
-                        const elements = document.querySelectorAll(selector);
-                        for (const el of elements) {
-                            const href = el.href;
-                            // Filter for product pages (contain -p and end with .html)
-                            if (href && href.includes('-p') && href.endsWith('.html') && !links.includes(href)) {
-                                links.push(href);
-                            }
+                # Extract product URLs from viewPayload (Zara's internal data structure)
+                # This is more reliable than DOM extraction due to virtual rendering
+                payload_data = await page.evaluate(
+                    """
+                    () => {
+                        if (!window.zara || !window.zara.viewPayload) return null;
+
+                        const payload = window.zara.viewPayload;
+                        const baseUrl = window.location.origin;
+                        const products = [];
+
+                        // Extract product URLs from productGroups
+                        if (payload.productGroups) {
+                            payload.productGroups.forEach(group => {
+                                if (group.elements) {
+                                    group.elements.forEach(element => {
+                                        if (element.commercialComponents) {
+                                            element.commercialComponents.forEach(comp => {
+                                                if (comp.seo && comp.seo.seoProductId && comp.seo.keyword) {
+                                                    const url = baseUrl + '/us/en/' + comp.seo.keyword + '-p' + comp.seo.seoProductId + '.html';
+                                                    products.push({
+                                                        id: comp.seo.seoProductId,
+                                                        url: url
+                                                    });
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+                            });
                         }
-                        if (links.length > 0) break;
+
+                        return {
+                            page: payload.paginationInfo?.page || 1,
+                            isLastPage: payload.paginationInfo?.isLastPage || false,
+                            products: products
+                        };
                     }
-                    return links;
-                }
-            """
-            )
+                    """
+                )
 
-            console.print(
-                f"[green]Found {len(product_links)} products in {category_key}[/green]"
-            )
-            return product_links[:limit]
+                # Fallback to DOM extraction if viewPayload not available
+                if not payload_data:
+                    console.print(
+                        f"[yellow]  viewPayload not found, falling back to DOM extraction...[/yellow]"
+                    )
+                    # Legacy DOM-based extraction
+                    if limit > 20:
+                        await self._scroll_to_load_all_products(page)
+                    else:
+                        await self._scroll_page(page, scroll_count=5)
 
-        except Exception as e:
-            console.print(
-                f"[bold red]Error fetching category {category_key}: {e}[/bold red]"
-            )
-            return []
-        finally:
-            await page.close()
+                    page_links = await page.evaluate(
+                        """
+                        () => {
+                            const links = [];
+                            const selectors = [
+                                'a.product-link',
+                                'a[href*="-p"][href$=".html"]',
+                                '.product-grid-product a',
+                                '[data-productid] a'
+                            ];
+
+                            for (const selector of selectors) {
+                                const elements = document.querySelectorAll(selector);
+                                for (const el of elements) {
+                                    const href = el.href;
+                                    if (href && href.includes('-p') && href.endsWith('.html') && !links.includes(href)) {
+                                        links.push(href);
+                                    }
+                                }
+                                if (links.length > 0) break;
+                            }
+                            return links;
+                        }
+                        """
+                    )
+
+                    links_before = len(all_product_links)
+                    for link in page_links:
+                        # Extract product ID from URL
+                        match = re.search(r"-p(\d+)\.html", link)
+                        if match:
+                            all_product_links[match.group(1)] = link
+
+                    new_links = len(all_product_links) - links_before
+                    console.print(
+                        f"[dim]  Page {current_page}: Found {len(page_links)} products ({new_links} new) [DOM][/dim]"
+                    )
+                    # No pagination info available in fallback mode
+                    break
+                else:
+                    # Process viewPayload data
+                    links_before = len(all_product_links)
+                    for product in payload_data.get("products", []):
+                        if product["id"] not in all_product_links:
+                            all_product_links[product["id"]] = product["url"]
+
+                    new_links = len(all_product_links) - links_before
+                    console.print(
+                        f"[dim]  Page {current_page}: Found {len(payload_data.get('products', []))} products ({new_links} new)[/dim]"
+                    )
+
+                    # Check if this is the last page
+                    if payload_data.get("isLastPage", True):
+                        break
+
+                current_page += 1
+                await self._random_delay()
+
+            except Exception as e:
+                console.print(
+                    f"[bold red]Error fetching category page {current_page}: {e}[/bold red]"
+                )
+                break
+            finally:
+                await page.close()
+
+        product_links = list(all_product_links.values())
+        console.print(
+            f"[green]Found {len(product_links)} total products in {category_key} (across {current_page} page(s))[/green]"
+        )
+        return product_links[:limit]
 
     async def _scroll_page(self, page: Page, scroll_count: int = 3) -> None:
         """Scroll page to trigger lazy loading."""
         for i in range(scroll_count):
             await page.evaluate("window.scrollBy(0, window.innerHeight)")
             await asyncio.sleep(0.5)
+
+    async def _scroll_to_load_all_products(
+        self, page: Page, max_scrolls: int = 100
+    ) -> int:
+        """
+        Scroll page until all products are loaded (infinite scroll).
+
+        This scrolls to the bottom repeatedly until no new products appear
+        for 5 consecutive scrolls. Also clicks "See more" or "View all" buttons
+        if found.
+
+        Args:
+            page: Playwright page
+            max_scrolls: Maximum number of scroll attempts (safety limit)
+
+        Returns:
+            Number of products found
+        """
+        previous_count = 0
+        same_count_times = 0
+        scroll_attempts = 0
+
+        while same_count_times < 5 and scroll_attempts < max_scrolls:
+            # First, try to click any "See more" or "View all" buttons
+            try:
+                clicked = await page.evaluate(
+                    """
+                    () => {
+                        // Look for "See more", "View all", "Load more" buttons
+                        const buttons = document.querySelectorAll('button, a');
+                        for (const btn of buttons) {
+                            const text = btn.textContent.toLowerCase().trim();
+                            if (text === 'see more' || text === 'view all' || text === 'load more' || text === 'show more') {
+                                // Check if it's visible and in the product listing area (not footer)
+                                const rect = btn.getBoundingClientRect();
+                                if (rect.top > 0 && rect.top < window.innerHeight * 2) {
+                                    btn.click();
+                                    return true;
+                                }
+                            }
+                        }
+                        return false;
+                    }
+                    """
+                )
+                if clicked:
+                    console.print(f"[dim]  ... clicked 'See more' button[/dim]")
+                    await asyncio.sleep(2)  # Wait for new products to load
+            except Exception:
+                pass
+
+            # Scroll to bottom of page
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await asyncio.sleep(1.5)  # Wait for lazy loading (increased from 1s)
+            scroll_attempts += 1
+
+            # Count unique product links
+            count = await page.evaluate(
+                """
+                () => {
+                    const products = new Set();
+                    document.querySelectorAll('a').forEach(link => {
+                        const match = link.href.match(/-p(\\d+)\\.html/);
+                        if (match) products.add(match[1]);
+                    });
+                    return products.size;
+                }
+                """
+            )
+
+            if count == previous_count:
+                same_count_times += 1
+            else:
+                same_count_times = 0
+                previous_count = count
+                console.print(f"[dim]  ... loaded {count} products[/dim]")
+
+        return previous_count
 
     async def extract_product(
         self, url: str, category: str
@@ -271,7 +458,9 @@ class ZaraExtractor:
                 if url_name:
                     name = url_name
                 else:
-                    console.print(f"[yellow]⚠ Skipping product {product_id}: Could not extract name[/yellow]")
+                    console.print(
+                        f"[yellow]⚠ Skipping product {product_id}: Could not extract name[/yellow]"
+                    )
                     return None
 
             # Extract prices - try API first, then DOM
@@ -310,6 +499,9 @@ class ZaraExtractor:
             # Extract materials/composition
             materials = await self._extract_materials(page)
 
+            # Extract composition (fabric percentage breakdown)
+            composition = await self._extract_composition(page, product_id)
+
             # Extract image URLs - try API first, then DOM
             image_urls = []
             if api_data and api_data.get("images"):
@@ -319,7 +511,9 @@ class ZaraExtractor:
 
             # Final validation: Must have either images OR a valid price
             if not image_urls and not price_current:
-                console.print(f"[yellow]⚠ Skipping product {product_id}: No images and no price (likely blocked)[/yellow]")
+                console.print(
+                    f"[yellow]⚠ Skipping product {product_id}: No images and no price (likely blocked)[/yellow]"
+                )
                 return None
 
             product_data = RawProductData(
@@ -334,6 +528,7 @@ class ZaraExtractor:
                 sizes=sizes,
                 materials=materials,
                 image_urls=image_urls,
+                composition=composition,
             )
 
             console.print(f"[green]✓ Extracted: {name} ({product_id})[/green]")
@@ -342,6 +537,131 @@ class ZaraExtractor:
         except Exception as e:
             console.print(f"[bold red]Error extracting product {url}: {e}[/bold red]")
             return None
+        finally:
+            await page.close()
+
+    async def extract_products_by_color(
+        self, url: str, category: str
+    ) -> list[RawProductData]:
+        """
+        Extract product data from a product page, creating separate entries for each color variant.
+
+        Args:
+            url: Product page URL
+            category: Category name for organization
+
+        Returns:
+            List of RawProductData objects, one per color variant.
+            Returns empty list if extraction fails.
+        """
+        console.print(f"[cyan]Extracting product with color variants: {url}[/cyan]")
+
+        # Extract product ID from URL first
+        base_product_id = self._extract_product_id(url)
+
+        # Get ALL color variants from API
+        api_data = await self._get_product_all_colors_from_api(base_product_id)
+
+        if not api_data or not api_data.get("color_variants"):
+            # Fall back to single product extraction if API fails
+            console.print(
+                f"[dim]Could not get color variants from API, falling back to single product[/dim]"
+            )
+            single_product = await self.extract_product(url, category)
+            return [single_product] if single_product else []
+
+        page = await self._create_stealth_page()
+        products = []
+
+        try:
+            await page.goto(
+                url, wait_until="networkidle", timeout=self.config.timeout_ms
+            )
+            await self._random_delay(2.0)
+
+            # Get shared data from DOM (materials, composition, fit)
+            materials = await self._extract_materials(page)
+            composition = await self._extract_composition(page, base_product_id)
+
+            # Extract name (shared across all variants)
+            name = api_data.get("name", "")
+            if not name:
+                name = await self._extract_text(
+                    page,
+                    [
+                        "h1.product-detail-info__header-name",
+                        'h1[class*="product-name"]',
+                        ".product-detail-info h1",
+                        "h1",
+                    ],
+                )
+
+            if not name or name == "Unknown" or len(name) < 2:
+                url_name = self._extract_name_from_url(url)
+                if url_name:
+                    name = url_name
+                else:
+                    console.print(
+                        f"[yellow]⚠ Skipping product {base_product_id}: Could not extract name[/yellow]"
+                    )
+                    return []
+
+            description = api_data.get("description")
+            all_colors = api_data.get("colors", [])
+
+            # Create a product entry for each color variant
+            for variant in api_data["color_variants"]:
+                color_name = variant["color_name"]
+                color_slug = slugify_color(color_name)
+
+                # Create unique product ID for this color variant
+                variant_product_id = f"{base_product_id}_{color_slug}"
+
+                # Get variant-specific data
+                variant_images = variant.get("images", [])
+                variant_price = variant.get("price")
+                variant_original_price = variant.get("original_price")
+                variant_sizes = variant.get("sizes", [])
+
+                # Skip variants without images
+                if not variant_images and not variant_price:
+                    console.print(
+                        f"[yellow]⚠ Skipping color variant {color_name}: No images and no price[/yellow]"
+                    )
+                    continue
+
+                product_data = RawProductData(
+                    product_id=variant_product_id,
+                    name=name,
+                    url=url,
+                    category=category,
+                    price_current=variant_price,
+                    price_original=variant_original_price,
+                    description=description,
+                    colors=all_colors,  # All available colors (for reference)
+                    color=color_name,  # This specific variant's color
+                    parent_product_id=base_product_id,  # Link back to original product
+                    sizes=variant_sizes,
+                    materials=materials,
+                    image_urls=variant_images,
+                    composition=composition,
+                )
+
+                products.append(product_data)
+                console.print(
+                    f"[green]✓ Extracted variant: {name} - {color_name} ({variant_product_id})[/green]"
+                )
+
+            console.print(
+                f"[blue]📦 Created {len(products)} color variant(s) for {name}[/blue]"
+            )
+            return products
+
+        except Exception as e:
+            console.print(
+                f"[bold red]Error extracting product variants {url}: {e}[/bold red]"
+            )
+            return []
         finally:
             await page.close()
 
@@ -388,7 +708,9 @@ class ZaraExtractor:
                     colors_data = data["detail"]["colors"]
                     if colors_data:
                         # Get color names
-                        result["colors"] = [c.get("name", "") for c in colors_data if c.get("name")]
+                        result["colors"] = [
+                            c.get("name", "") for c in colors_data if c.get("name")
+                        ]
 
                         # Get images from first color
                         first_color = colors_data[0]
@@ -396,7 +718,9 @@ class ZaraExtractor:
                             images = []
                             for media in first_color["xmedia"]:
                                 # Use the deliveryUrl from extraInfo if available
-                                if "extraInfo" in media and media["extraInfo"].get("deliveryUrl"):
+                                if "extraInfo" in media and media["extraInfo"].get(
+                                    "deliveryUrl"
+                                ):
                                     img_url = media["extraInfo"]["deliveryUrl"]
                                     # Add width parameter for reasonable size
                                     if "?" in img_url:
@@ -420,7 +744,9 @@ class ZaraExtractor:
                                 result["original_price"] = first_size["oldPrice"] / 100
 
                 if result.get("name"):
-                    console.print(f"[dim]Got product data from API: {result.get('name')}[/dim]")
+                    console.print(
+                        f"[dim]Got product data from API: {result.get('name')}[/dim]"
+                    )
                     return result
 
         except Exception as e:
@@ -428,15 +754,139 @@ class ZaraExtractor:
 
         return None
 
+    async def _get_product_all_colors_from_api(self, product_id: str) -> Optional[dict]:
+        """
+        Get product data from Zara's ITXRest API with ALL color variants.
+
+        Returns dict with:
+            - name, description (shared)
+            - colors: list of color names
+            - color_variants: list of dicts, each with:
+                - color_name, color_id, images, price, original_price, sizes
+        """
+        try:
+            import httpx
+
+            api_url = f"https://www.zara.com/itxrest/2/catalog/store/11719/product/{product_id}"
+
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.zara.com/us/en/",
+            }
+
+            async with httpx.AsyncClient(follow_redirects=True) as client:
+                response = await client.get(api_url, headers=headers, timeout=10)
+
+                if response.status_code != 200:
+                    return None
+
+                data = response.json()
+                result = {
+                    "name": data.get("name", ""),
+                    "colors": [],
+                    "color_variants": [],
+                }
+
+                # Extract description
+                if "detail" in data:
+                    desc_parts = []
+                    for key in ["description", "longDescription"]:
+                        if data["detail"].get(key):
+                            desc_parts.append(data["detail"][key])
+                    result["description"] = " ".join(desc_parts) if desc_parts else None
+
+                # Extract ALL color variants
+                if "detail" in data and "colors" in data["detail"]:
+                    colors_data = data["detail"]["colors"]
+                    if colors_data:
+                        for color_info in colors_data:
+                            color_name = color_info.get("name", "")
+                            if not color_name:
+                                continue
+
+                            result["colors"].append(color_name)
+
+                            variant = {
+                                "color_name": color_name,
+                                "color_id": color_info.get("id", ""),
+                                "images": [],
+                                "price": None,
+                                "original_price": None,
+                                "sizes": [],
+                            }
+
+                            # Get images for this color
+                            if "xmedia" in color_info:
+                                for media in color_info["xmedia"]:
+                                    if "extraInfo" in media and media["extraInfo"].get(
+                                        "deliveryUrl"
+                                    ):
+                                        img_url = media["extraInfo"]["deliveryUrl"]
+                                        if "?" in img_url:
+                                            img_url += "&w=850"
+                                        else:
+                                            img_url += "?w=850"
+                                        variant["images"].append(img_url)
+                                    elif media.get("path") and media.get("name"):
+                                        img_url = f"https://static.zara.net/photos/{media['path']}/{media['name']}.jpg?w=850"
+                                        variant["images"].append(img_url)
+                                variant["images"] = variant["images"][
+                                    :5
+                                ]  # Limit to 5 images
+
+                            # Get price and sizes for this color
+                            if "sizes" in color_info and color_info["sizes"]:
+                                for size_info in color_info["sizes"]:
+                                    size_name = size_info.get("name", "")
+                                    if size_name:
+                                        # Check availability
+                                        availability = size_info.get("availability", "")
+                                        is_available = availability in [
+                                            "in_stock",
+                                            "low_on_stock",
+                                            "coming_soon",
+                                        ]
+                                        variant["sizes"].append(
+                                            {
+                                                "size": size_name,
+                                                "available": is_available,
+                                                "availability": availability,
+                                            }
+                                        )
+
+                                # Get price from first size
+                                first_size = color_info["sizes"][0]
+                                if "price" in first_size:
+                                    variant["price"] = first_size["price"] / 100
+                                if "oldPrice" in first_size:
+                                    variant["original_price"] = (
+                                        first_size["oldPrice"] / 100
+                                    )
+
+                            result["color_variants"].append(variant)
+
+                if result.get("name") and result.get("color_variants"):
+                    console.print(
+                        f"[dim]Got {len(result['color_variants'])} color variant(s) from API: {result.get('name')}[/dim]"
+                    )
+                    return result
+
+        except Exception as e:
+            console.print(f"[dim]API color lookup failed: {e}[/dim]")
+
+        return None
+
     def _extract_name_from_url(self, url: str) -> Optional[str]:
         """Extract a product name from the URL as a fallback."""
         try:
             # URL format: /us/en/product-name-here-p12345678.html
-            match = re.search(r'/([^/]+)-p\d+\.html', url)
+            match = re.search(r"/([^/]+)-p\d+\.html", url)
             if match:
                 name_slug = match.group(1)
                 # Convert slug to title case
-                name = name_slug.replace('-', ' ').title()
+                name = name_slug.replace("-", " ").title()
                 return name
         except:
             pass
@@ -576,7 +1026,9 @@ class ZaraExtractor:
             product_id = self._extract_product_id(url)
 
             if not product_id:
-                console.print("[yellow]Could not extract product ID for size lookup[/yellow]")
+                console.print(
+                    "[yellow]Could not extract product ID for size lookup[/yellow]"
+                )
                 return []
 
             # Query Zara's ITXRest API directly using httpx (not browser)
@@ -594,7 +1046,9 @@ class ZaraExtractor:
                 response = await client.get(api_url, headers=headers, timeout=10)
 
                 if response.status_code != 200:
-                    console.print(f"[yellow]Size API returned status {response.status_code}[/yellow]")
+                    console.print(
+                        f"[yellow]Size API returned status {response.status_code}[/yellow]"
+                    )
                     return []
 
                 data = response.json()
@@ -611,21 +1065,28 @@ class ZaraExtractor:
                                 size_name = size.get("name", "")
                                 if size_name and size_name not in seen_sizes:
                                     availability = size.get("availability", "unknown")
-                                    sizes.append({
-                                        "size": size_name,
-                                        "available": availability in ("in_stock", "low_on_stock"),
-                                        "availability": availability,
-                                        "sku": size.get("sku")
-                                    })
+                                    sizes.append(
+                                        {
+                                            "size": size_name,
+                                            "available": availability
+                                            in ("in_stock", "low_on_stock"),
+                                            "availability": availability,
+                                            "sku": size.get("sku"),
+                                        }
+                                    )
                                     seen_sizes.add(size_name)
 
                 if sizes:
-                    console.print(f"[dim]Found {len(sizes)} sizes via API: {[s['size'] for s in sizes]}[/dim]")
+                    console.print(
+                        f"[dim]Found {len(sizes)} sizes via API: {[s['size'] for s in sizes]}[/dim]"
+                    )
 
                 return sizes
 
         except Exception as e:
-            console.print(f"[yellow]Warning: Could not extract sizes via API: {e}[/yellow]")
+            console.print(
+                f"[yellow]Warning: Could not extract sizes via API: {e}[/yellow]"
+            )
             return []
 
     async def _extract_materials(self, page: Page) -> list[str]:
@@ -658,6 +1119,278 @@ class ZaraExtractor:
             return materials
         except:
             return []
+
+    async def _extract_composition(self, page: Page, product_id: str) -> Optional[str]:
+        """
+        Extract composition/material information from the product page.
+
+        This looks for the "COMPOSITION & CARE" section and extracts the fabric
+        composition (e.g., "100% cotton" or "49% polyamide, 29% polyester, 14% acrylic, 8% wool").
+
+        Args:
+            page: Playwright page
+            product_id: Product ID for API fallback
+
+        Returns:
+            Composition string or None if not found
+        """
+        composition = None
+
+        # First, try to get composition from the API
+        try:
+            import httpx
+
+            api_url = f"https://www.zara.com/itxrest/2/catalog/store/11719/product/{product_id}"
+
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.zara.com/us/en/",
+            }
+
+            async with httpx.AsyncClient(follow_redirects=True) as client:
+                response = await client.get(api_url, headers=headers, timeout=10)
+
+                if response.status_code == 200:
+                    data = response.json()
+
+                    # Check for detailedComposition at the detail level first (most reliable)
+                    if "detail" in data:
+                        detail = data["detail"]
+                        if "detailedComposition" in detail:
+                            detailed_comp = detail["detailedComposition"]
+                            if detailed_comp and isinstance(detailed_comp, dict):
+                                # Structure: {parts: [{components: [{material, percentage}]}]}
+                                parts = detailed_comp.get("parts", [])
+                                comp_parts = []
+                                for part in parts:
+                                    if isinstance(part, dict):
+                                        components = part.get("components", [])
+                                        for comp in components:
+                                            if isinstance(comp, dict):
+                                                material = comp.get("material", "")
+                                                percentage = comp.get("percentage", "")
+                                                if material and percentage:
+                                                    comp_parts.append(
+                                                        f"{percentage} {material}"
+                                                    )
+                                if comp_parts:
+                                    composition = ", ".join(comp_parts)
+                                    console.print(
+                                        f"[dim]Got composition from API detailedComposition: {composition}[/dim]"
+                                    )
+                                    return composition
+
+                    # Look for composition in colors array
+                    if "detail" in data and "colors" in data["detail"]:
+                        colors = data["detail"]["colors"]
+                        if colors:
+                            first_color = colors[0]
+
+                            # Try rawMaterials first
+                            if "rawMaterials" in first_color:
+                                raw_materials = first_color["rawMaterials"]
+                                if isinstance(raw_materials, list) and raw_materials:
+                                    comp_parts = []
+                                    for mat in raw_materials:
+                                        if isinstance(mat, dict):
+                                            percentage = mat.get("percentage", "")
+                                            material = mat.get(
+                                                "description",
+                                                mat.get(
+                                                    "name", mat.get("material", "")
+                                                ),
+                                            )
+                                            if percentage and material:
+                                                comp_parts.append(
+                                                    f"{percentage}% {material}"
+                                                )
+                                            elif material:
+                                                comp_parts.append(material)
+                                        elif isinstance(mat, str):
+                                            comp_parts.append(mat)
+                                    if comp_parts:
+                                        composition = ", ".join(comp_parts)
+                                        console.print(
+                                            f"[dim]Got composition from API rawMaterials: {composition}[/dim]"
+                                        )
+                                        return composition
+                                elif isinstance(raw_materials, str):
+                                    composition = raw_materials
+                                    console.print(
+                                        f"[dim]Got composition from API rawMaterials: {composition}[/dim]"
+                                    )
+                                    return composition
+
+                            # Try composition field directly
+                            if "composition" in first_color:
+                                comp = first_color["composition"]
+                                if isinstance(comp, str) and comp:
+                                    console.print(
+                                        f"[dim]Got composition from API composition field: {comp}[/dim]"
+                                    )
+                                    return comp
+
+                            # Try materials field
+                            if "materials" in first_color:
+                                materials = first_color["materials"]
+                                if isinstance(materials, list) and materials:
+                                    comp_parts = []
+                                    for mat in materials:
+                                        if isinstance(mat, dict):
+                                            parts_list = mat.get("parts", [])
+                                            for part in parts_list:
+                                                if isinstance(part, dict):
+                                                    percentage = part.get(
+                                                        "percentage", ""
+                                                    )
+                                                    material = part.get(
+                                                        "description",
+                                                        part.get("name", ""),
+                                                    )
+                                                    if percentage and material:
+                                                        comp_parts.append(
+                                                            f"{percentage}% {material}"
+                                                        )
+                                        elif isinstance(mat, str):
+                                            comp_parts.append(mat)
+                                    if comp_parts:
+                                        composition = ", ".join(comp_parts)
+                                        console.print(
+                                            f"[dim]Got composition from API materials: {composition}[/dim]"
+                                        )
+                                        return composition
+
+                    # Try detail.composition or detail.rawMaterials at the top level
+                    if "detail" in data:
+                        detail = data["detail"]
+                        if "composition" in detail:
+                            comp = detail["composition"]
+                            if isinstance(comp, str) and comp:
+                                console.print(
+                                    f"[dim]Got composition from API detail.composition: {comp}[/dim]"
+                                )
+                                return comp
+                        if "rawMaterials" in detail:
+                            comp = detail["rawMaterials"]
+                            if isinstance(comp, str) and comp:
+                                console.print(
+                                    f"[dim]Got composition from API detail.rawMaterials: {comp}[/dim]"
+                                )
+                                return comp
+
+        except Exception as e:
+            console.print(f"[dim]API composition lookup failed: {e}[/dim]")
+
+        # Fallback: Try to click "COMPOSITION & CARE" and extract from expanded content
+        try:
+            # Try to find and click the composition toggle button
+            composition_buttons = await page.query_selector_all(
+                'button:has-text("COMPOSITION"), button:has-text("Composition")'
+            )
+            for btn in composition_buttons:
+                try:
+                    await btn.click()
+                    await asyncio.sleep(0.5)  # Wait for content to expand
+                except:
+                    pass
+        except:
+            pass
+
+        # Now try to extract composition from the DOM
+        try:
+            composition = await page.evaluate(
+                """
+                () => {
+                    // Strategy 1: Look for elements that contain composition percentages
+                    const selectors = [
+                        // Zara composition sections (after clicking expand)
+                        '.product-detail-extra-detail .structured-component-text-block-paragraph',
+                        '.product-detail-composition',
+                        '[data-component-type="composition"]',
+                        '.product-detail-info__composition',
+                        '.product-detail-view__main-info-inner p',
+                        // Composition in expandable sections
+                        '.expandable-text__inner-content',
+                        '.product-detail-extra-detail__content',
+                        // General composition patterns
+                        '[class*="composition"] p',
+                        '[class*="composition"] span',
+                        '[class*="material"] p',
+                        // Text blocks that might contain composition
+                        '.expandable-text__content p',
+                        '.product-detail-extra-detail p',
+                        // Look for any p tags with composition info
+                        'p',
+                        'span',
+                    ];
+
+                    for (const sel of selectors) {
+                        const elements = document.querySelectorAll(sel);
+                        for (const el of elements) {
+                            const text = el.textContent.trim();
+                            // Look for text containing percentage signs (likely composition)
+                            if (text && text.includes('%') && /\\d+%/.test(text)) {
+                                // Must have at least one material keyword
+                                const materialKeywords = ['cotton', 'polyester', 'wool', 'silk', 'linen', 'nylon',
+                                    'polyamide', 'acrylic', 'viscose', 'elastane', 'spandex', 'rayon', 'cashmere',
+                                    'leather', 'denim', 'modal', 'lyocell', 'tencel'];
+                                const textLower = text.toLowerCase();
+                                const hasMaterial = materialKeywords.some(kw => textLower.includes(kw));
+
+                                if (hasMaterial) {
+                                    // Clean up the text
+                                    const cleaned = text.replace(/\\s+/g, ' ').trim();
+                                    if (cleaned.length > 3 && cleaned.length < 500) {
+                                        return cleaned;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Strategy 2: Search the full page text for composition patterns
+                    const pageText = document.body.innerText;
+
+                    // Look for "Composition:" followed by percentage info
+                    const compositionMatch = pageText.match(/Composition:?\\s*([\\d]+%[^.\\n]*(?:,\\s*\\d+%[^.\\n]*)*)/i);
+                    if (compositionMatch) {
+                        return compositionMatch[1].trim();
+                    }
+
+                    // Look for patterns like "100% cotton" or "60% cotton, 40% polyester"
+                    const materialKeywords = ['cotton', 'polyester', 'wool', 'silk', 'linen', 'nylon',
+                        'polyamide', 'acrylic', 'viscose', 'elastane', 'spandex', 'rayon', 'cashmere',
+                        'leather', 'denim', 'modal', 'lyocell', 'tencel'];
+                    const materialPattern = pageText.match(/\\d+%\\s*[a-zA-Z]+(?:\\s*,\\s*\\d+%\\s*[a-zA-Z]+)*/gi);
+                    if (materialPattern) {
+                        // Filter to only matches that contain material keywords
+                        const validMatches = materialPattern.filter(m => {
+                            const lower = m.toLowerCase();
+                            return materialKeywords.some(kw => lower.includes(kw));
+                        });
+                        if (validMatches.length > 0) {
+                            // Find the most complete match (longest)
+                            const best = validMatches.sort((a, b) => b.length - a.length)[0];
+                            if (best && best.length < 200) {
+                                return best.trim();
+                            }
+                        }
+                    }
+
+                    return null;
+                }
+            """
+            )
+
+            if composition:
+                console.print(f"[dim]Got composition from DOM: {composition}[/dim]")
+
+        except Exception as e:
+            console.print(f"[dim]DOM composition extraction failed: {e}[/dim]")
+
+        return composition
 
     async def _extract_images(self, page: Page) -> list[str]:
         """Extract product image URLs."""

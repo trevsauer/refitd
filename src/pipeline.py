@@ -51,6 +51,7 @@ class ZaraPipeline:
         force_rescrape: bool = False,
         use_supabase: bool = True,
         save_local: bool = False,
+        expand_colors: bool = False,
     ):
         self.config = pipeline_config or config
         self.extractor = None
@@ -59,6 +60,7 @@ class ZaraPipeline:
         self.force_rescrape = force_rescrape
         self.use_supabase = use_supabase
         self.save_local = save_local
+        self.expand_colors = expand_colors  # Create separate entries per color variant
         self.supabase_loader = None
 
         # Initialize Supabase loader if requested
@@ -186,21 +188,43 @@ class ZaraPipeline:
                         continue
 
                     await extractor._random_delay()
-                    product = await extractor.extract_product(url, category_key)
 
-                    if product:
-                        products.append(product)
-                        new_products_scraped += 1
+                    if self.expand_colors:
+                        # Extract and create separate entries for each color variant
+                        color_variants = await extractor.extract_products_by_color(
+                            url, category_key
+                        )
 
-                        # Mark as scraped in the tracking database
-                        if self.tracker:
-                            self.tracker.mark_scraped(
-                                product_id=product.product_id,
-                                url=product.url,
-                                category=product.category,
-                                name=product.name,
-                                price=product.price_current,
-                            )
+                        for product in color_variants:
+                            products.append(product)
+                            new_products_scraped += 1
+
+                            # Mark as scraped in the tracking database
+                            if self.tracker:
+                                self.tracker.mark_scraped(
+                                    product_id=product.product_id,
+                                    url=product.url,
+                                    category=product.category,
+                                    name=product.name,
+                                    price=product.price_current,
+                                )
+                    else:
+                        # Original behavior: single product per URL
+                        product = await extractor.extract_product(url, category_key)
+
+                        if product:
+                            products.append(product)
+                            new_products_scraped += 1
+
+                            # Mark as scraped in the tracking database
+                            if self.tracker:
+                                self.tracker.mark_scraped(
+                                    product_id=product.product_id,
+                                    url=product.url,
+                                    category=product.category,
+                                    name=product.name,
+                                    price=product.price_current,
+                                )
 
                 console.print(
                     f"[green]Category {category_key}: {new_products_scraped} new products scraped[/green]"
@@ -256,6 +280,12 @@ class ZaraPipeline:
                         currency=product.price.currency,
                         description=product.description,
                         colors=product.colors,
+                        color=getattr(
+                            raw, "color", None
+                        ),  # Single color for this variant
+                        parent_product_id=getattr(
+                            raw, "parent_product_id", None
+                        ),  # Parent product ID
                         sizes=product.sizes,
                         materials=product.materials,
                         fit=product.fit,
@@ -263,6 +293,7 @@ class ZaraPipeline:
                         style_tags=style_tags_list,
                         formality=formality_dict,
                         image_urls=raw.image_urls,
+                        composition=raw.composition,
                     )
                 except Exception as e:
                     console.print(
