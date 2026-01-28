@@ -4711,7 +4711,7 @@ HTML_TEMPLATE = """
                     <div style="background: rgba(100, 181, 246, 0.2); padding: 15px; border-radius: 8px; border: 1px solid #64b5f6;">
                         <div style="font-size: 24px; margin-bottom: 8px;">🔵</div>
                         <strong style="color: #64b5f6;">AI Sensor</strong>
-                        <p style="color: #b0b0b0; font-size: 12px; margin-top: 5px;">GPT-4o Vision analyzes images → tags with confidence</p>
+                        <p style="color: #b0b0b0; font-size: 12px; margin-top: 5px;">GPT-5.2 Vision analyzes images → tags with confidence</p>
                     </div>
                     <div style="background: rgba(255, 183, 77, 0.2); padding: 15px; border-radius: 8px; border: 1px solid #ffb74d;">
                         <div style="font-size: 24px; margin-bottom: 8px;">⚙️</div>
@@ -4727,14 +4727,14 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
-        <!-- GPT-4o Model Overview -->
+        <!-- GPT-5.2 Model Overview -->
         <div style="margin-bottom: 25px;">
             <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
-                📦 Primary AI Model: GPT-4o
+                📦 Primary AI Model: GPT-5.2
             </h3>
             <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 10px;">
-                ReFitd uses <strong style="color: #fff;">GPT-4o</strong> (OpenAI's latest multimodal model) for generating
-                canonical tags. GPT-4o excels at visual understanding and produces consistent, structured JSON output.
+                ReFitd uses <strong style="color: #fff;">GPT-5.2</strong> (OpenAI's latest multimodal model) for generating
+                canonical tags. GPT-5.2 excels at visual understanding and produces consistent, structured JSON output.
             </p>
             <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
                 <li><strong style="color: #fff;">Vision + Language:</strong> Analyzes product images alongside title and description for comprehensive understanding</li>
@@ -4821,7 +4821,7 @@ HTML_TEMPLATE = """
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <div style="background: rgba(129, 199, 132, 0.15); padding: 15px; border-radius: 8px; border: 1px solid #81c784;">
                         <strong style="color: #81c784;">🤖 AI Formality</strong>
-                        <p style="color: #b0b0b0; font-size: 12px; margin-top: 8px;">GPT-4o analyzes the image and assigns formality based on visual appearance and product context. Uses confidence scoring.</p>
+                        <p style="color: #b0b0b0; font-size: 12px; margin-top: 8px;">GPT-5.2 analyzes the image and assigns formality based on visual appearance and product context. Uses confidence scoring.</p>
                     </div>
                     <div style="background: rgba(255, 183, 77, 0.15); padding: 15px; border-radius: 8px; border: 1px solid #ffb74d;">
                         <strong style="color: #ffb74d;">📐 Rule-Based Formality</strong>
@@ -4994,7 +4994,7 @@ HTML_TEMPLATE = """
         <!-- Technical Stack Footer -->
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); text-align: center;">
             <p style="color: #666; font-size: 13px;">
-                <strong>Tech Stack:</strong> GPT-4o (canonical tagging) • Ollama + Moondream (legacy) • Supabase (storage) • Python/Flask (backend)
+                <strong>Tech Stack:</strong> GPT-5.2 (canonical tagging) • Ollama + Moondream (legacy) • Supabase (storage) • Python/Flask (backend)
             </p>
             <p style="color: #555; font-size: 11px; margin-top: 8px;">
                 Policy Version: tag_policy_v2.3 • Formality: AI-generated with rule-based comparison

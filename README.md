@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![Flask](https://img.shields.io/badge/Flask-Web%20App-green.svg)
 ![Supabase](https://img.shields.io/badge/Supabase-Database-orange.svg)
-![AI](https://img.shields.io/badge/AI-Ollama%20%2B%20Moondream-purple.svg)
+![AI](https://img.shields.io/badge/AI-GPT--5.2%20%2B%20Moondream-purple.svg)
 
 **A complete ETL pipeline for scraping, storing, viewing, and curating men's fashion products with AI-powered style tagging.**
 
@@ -33,7 +33,7 @@ The ReFitd tagging system uses a structured AI → Policy → Canonical flow:
 
 | Component | Purpose | Output |
 |-----------|---------|--------|
-| 🔵 **AI Sensor** | GPT-4o vision analyzes product images | Tags with confidence scores |
+| 🔵 **AI Sensor** | GPT-5.2 vision analyzes product images | Tags with confidence scores |
 | ⚙️ **Tag Policy** | Applies thresholds and business rules | Filtered, validated tags |
 | 🏷️ **Canonical Tags** | Final machine-readable tags | Clean tags for outfit generation |
 
@@ -48,7 +48,7 @@ The ReFitd tagging system uses a structured AI → Policy → Canonical flow:
 - **Shoe-Specific**: type, profile, closure
 
 ### 🤖 AI-Powered Features
-- **GPT-4o Vision Tagging** - Analyzes product images to generate structured canonical tags with confidence scores
+- **GPT-5.2 Vision Tagging** - Analyzes product images to generate structured canonical tags with confidence scores
 - **AI Formality Rating** - AI-generated formality level (1-5 scale) for comparison with rule-based approach
 - **Semantic Search** - Find products using natural language queries
 - **AI Chat Assistant** - Get styling advice and product recommendations
@@ -144,7 +144,7 @@ The viewer includes powerful AI capabilities powered by GPT-4o and local models.
 ### Requirements for AI Features
 
 ```bash
-# Option 1: OpenAI GPT-4o (for ReFitd Canonical Tagging)
+# Option 1: OpenAI GPT-5.2 (for ReFitd Canonical Tagging)
 # Set your OpenAI API key in .env file
 OPENAI_API_KEY=your-key-here
 
@@ -159,13 +159,13 @@ ollama serve
 ollama pull moondream
 ```
 
-### ReFitd Canonical Tagging (GPT-4o)
+### ReFitd Canonical Tagging (GPT-5.2)
 
-The primary tagging system uses GPT-4o vision for structured, machine-readable tags:
+The primary tagging system uses GPT-5.2 vision for structured, machine-readable tags:
 
 1. Open a product in the viewer
 2. Click the **"🏷️ Generate ReFitd Tags"** button
-3. GPT-4o analyzes the product image and generates canonical tags
+3. GPT-5.2 analyzes the product image and generates canonical tags
 4. Tags are processed through the policy layer (confidence thresholds, business rules)
 5. Final canonical tags appear in the ReFitd Canonical Tags section
 
