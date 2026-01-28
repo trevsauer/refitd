@@ -1705,39 +1705,39 @@ HTML_TEMPLATE = """
                 label: 'Base Layer',
                 icon: '👕',
                 subcategories: {
-                    tshirts: { label: 'T-Shirts', icon: '👕', keywords: ['t-shirt', 'tshirt', 'tee'] },
-                    longsleeve: { label: 'Long Sleeve', icon: '👕', keywords: ['long sleeve', 'longsleeve'] },
-                    shirts: { label: 'Shirts', icon: '👔', keywords: ['shirt', 'button', 'oxford', 'dress shirt'] },
+                    tshirts: { label: 'T-Shirts', icon: '👕', keywords: ['t-shirt', 'tshirt', 'tee', 't shirt', 'basic'] },
+                    longsleeve: { label: 'Long Sleeve', icon: '👕', keywords: ['long sleeve', 'longsleeve', 'long-sleeve'] },
+                    shirts: { label: 'Shirts', icon: '👔', keywords: ['shirt', 'button', 'oxford', 'poplin', 'linen', 'cotton shirt'] },
                     polos: { label: 'Polos', icon: '👕', keywords: ['polo'] },
-                    tanks: { label: 'Tanks & Henleys', icon: '🎽', keywords: ['tank', 'henley', 'sleeveless'] }
+                    tanks: { label: 'Tanks & Henleys', icon: '🎽', keywords: ['tank', 'henley', 'sleeveless', 'muscle'] }
                 }
             },
             tops_mid: {
                 label: 'Mid Layer',
                 icon: '🧶',
                 subcategories: {
-                    sweaters: { label: 'Sweaters', icon: '🧶', keywords: ['sweater', 'knit', 'pullover'] },
-                    cardigans: { label: 'Cardigans', icon: '🧶', keywords: ['cardigan'] },
-                    hoodies: { label: 'Hoodies', icon: '🧥', keywords: ['hoodie', 'hooded'] },
-                    sweatshirts: { label: 'Sweatshirts', icon: '👕', keywords: ['sweatshirt', 'fleece', 'crewneck'] }
+                    sweaters: { label: 'Sweaters', icon: '🧶', keywords: ['sweater', 'knit', 'pullover', 'jumper', 'knitwear'] },
+                    cardigans: { label: 'Cardigans', icon: '🧶', keywords: ['cardigan', 'open front', 'button-up knit'] },
+                    hoodies: { label: 'Hoodies', icon: '🧥', keywords: ['hoodie', 'hooded', 'hood'] },
+                    sweatshirts: { label: 'Sweatshirts', icon: '👕', keywords: ['sweatshirt', 'fleece', 'crewneck', 'crew neck', 'french terry'] }
                 }
             },
             bottoms: {
                 label: 'Bottoms',
                 icon: '👖',
                 subcategories: {
-                    pants: { label: 'Pants', icon: '👖', keywords: ['pant', 'trouser', 'chino', 'jean', 'denim', 'jogger', 'cargo'] },
-                    shorts: { label: 'Shorts', icon: '🩳', keywords: ['short', 'bermuda', 'swim short'] }
+                    pants: { label: 'Pants', icon: '👖', keywords: ['pant', 'trouser', 'chino', 'jean', 'denim', 'jogger', 'cargo', 'slack'] },
+                    shorts: { label: 'Shorts', icon: '🩳', keywords: ['short', 'bermuda', 'swim'] }
                 }
             },
             outerwear: {
                 label: 'Outerwear',
                 icon: '🧥',
                 subcategories: {
-                    jackets: { label: 'Jackets', icon: '🧥', keywords: ['jacket', 'bomber', 'denim jacket', 'leather jacket'] },
-                    coats: { label: 'Coats', icon: '🧥', keywords: ['coat', 'overcoat', 'trench', 'parka', 'puffer'] },
-                    blazers: { label: 'Blazers', icon: '🤵', keywords: ['blazer', 'sport coat', 'suit jacket'] },
-                    vests: { label: 'Vests', icon: '🦺', keywords: ['vest', 'gilet', 'waistcoat'] }
+                    jackets: { label: 'Jackets', icon: '🧥', keywords: ['jacket', 'bomber', 'windbreaker', 'trucker', 'overshirt', 'shacket'] },
+                    coats: { label: 'Coats', icon: '🧥', keywords: ['coat', 'overcoat', 'trench', 'parka', 'puffer', 'quilted', 'padded', 'down'] },
+                    blazers: { label: 'Blazers', icon: '🤵', keywords: ['blazer', 'sport coat', 'suit jacket', 'suit'] },
+                    vests: { label: 'Vests', icon: '🦺', keywords: ['vest', 'gilet', 'waistcoat', 'sleeveless jacket', 'bodywarmer'] }
                 }
             },
             shoes: {
