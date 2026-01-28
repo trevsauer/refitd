@@ -27,7 +27,7 @@ console = Console()
 
 # Available categories with descriptions
 AVAILABLE_CATEGORIES = {
-    # Clothing
+    # Base Layer (Tops)
     "tshirts": {
         "url": "/us/en/man-tshirts-l855.html",
         "desc": "T-Shirts & casual tops",
@@ -36,14 +36,34 @@ AVAILABLE_CATEGORIES = {
         "url": "/us/en/man-shirts-l737.html",
         "desc": "Dress shirts & button-ups",
     },
+    "polos": {
+        "url": "/us/en/man-polos-l845.html",
+        "desc": "Polo shirts",
+    },
+    # Mid Layer (Tops)
+    "knitwear": {
+        "url": "/us/en/man-knitwear-l820.html",
+        "desc": "Sweaters, cardigans & knits",
+    },
+    "sweatshirts": {
+        "url": "/us/en/man-sweatshirts-l821.html",
+        "desc": "Sweatshirts & hoodies",
+    },
+    # Bottoms
     "trousers": {
         "url": "/us/en/man-trousers-l838.html",
         "desc": "Trousers & dress pants",
     },
     "jeans": {"url": "/us/en/man-jeans-l659.html", "desc": "Jeans & denim"},
     "shorts": {"url": "/us/en/man-shorts-l722.html", "desc": "Shorts & bermudas"},
+    # Outerwear
     "jackets": {"url": "/us/en/man-jackets-l715.html", "desc": "Jackets & outerwear"},
+    "coats": {"url": "/us/en/man-coats-l1102.html", "desc": "Coats & parkas"},
     "blazers": {"url": "/us/en/man-blazers-l608.html", "desc": "Blazers & sport coats"},
+    "waistcoats": {
+        "url": "/us/en/man-waistcoats-l1723.html",
+        "desc": "Vests & waistcoats",
+    },
     "suits": {"url": "/us/en/man-suits-l599.html", "desc": "Suits & formal wear"},
     # Footwear
     "shoes": {"url": "/us/en/man-shoes-l769.html", "desc": "All footwear"},

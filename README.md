@@ -230,17 +230,25 @@ python main.py --supabase --all
 
 ### Scrape by Subcategory
 
-To scrape one product from every category (useful for testing):
+To scrape one product from every category (useful for testing all subcategories):
 
 ```bash
 # Quick way: Use --sample-all to get 1 product from each Zara category
 python main.py --sample-all
 
-# This is equivalent to:
-# python main.py -n 1
-
-# For specific categories only:
-python main.py -n 1 -c tshirts shirts trousers shorts jackets blazers shoes
+# This scrapes 1 product from each of these categories:
+# - tshirts (T-Shirts, Long Sleeve, Tanks)
+# - shirts (Dress Shirts)
+# - polos (Polo Shirts)
+# - knitwear (Sweaters, Cardigans)
+# - sweatshirts (Hoodies, Sweatshirts)
+# - trousers (Pants)
+# - shorts (Shorts)
+# - jackets (Jackets)
+# - coats (Coats)
+# - blazers (Blazers)
+# - waistcoats (Vests)
+# - shoes (All Footwear)
 ```
 
 ### Command Line Options
@@ -258,8 +266,31 @@ python main.py -n 1 -c tshirts shirts trousers shorts jackets blazers shoes
 ### Available Categories
 
 ```
-tshirts, shirts, trousers, jeans, shorts, jackets,
-blazers, suits, shoes, new-in
+# Base Layer (Tops)
+tshirts      - T-Shirts & casual tops
+shirts       - Dress shirts & button-ups
+polos        - Polo shirts
+
+# Mid Layer (Tops)
+knitwear     - Sweaters, cardigans & knits
+sweatshirts  - Sweatshirts & hoodies
+
+# Bottoms
+trousers     - Trousers & dress pants
+jeans        - Jeans & denim
+shorts       - Shorts & bermudas
+
+# Outerwear
+jackets      - Jackets & outerwear
+coats        - Coats & parkas
+blazers      - Blazers & sport coats
+waistcoats   - Vests & waistcoats
+
+# Footwear
+shoes        - All footwear
+
+# Discovery
+new-in       - New arrivals
 ```
 
 ### Category → Subcategory Mapping
