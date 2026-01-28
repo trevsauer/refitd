@@ -124,6 +124,9 @@ def get_products_from_supabase():
                     "sizes_availability": p.get(
                         "sizes_availability", []
                     ),  # New field with availability
+                    "sizes_checked_at": p.get(
+                        "sizes_checked_at"
+                    ),  # When sizes were last checked
                     "materials": p.get("materials", []),
                     "composition": p.get(
                         "composition"
@@ -141,6 +144,15 @@ def get_products_from_supabase():
                     "formality": p.get("formality"),  # Now loaded from DB as JSONB
                     "scraped_at": p.get("scraped_at"),
                     "_source": "supabase",  # Mark source for frontend
+                    # ReFitd Canonical Tagging System fields
+                    "tags_ai_raw": p.get(
+                        "tags_ai_raw"
+                    ),  # AI sensor output with confidence
+                    "tags_final": p.get("tags_final"),  # Canonical tags for generator
+                    "curation_status_refitd": p.get(
+                        "curation_status_refitd", "pending"
+                    ),
+                    "tag_policy_version": p.get("tag_policy_version"),
                 }
             )
 
@@ -205,6 +217,12 @@ HTML_TEMPLATE = """
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+        }
+
+        /* Pulse animation for low stock indicator */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
         }
 
         body {
@@ -487,6 +505,45 @@ HTML_TEMPLATE = """
         .category-item.active .category-count {
             background: #2196F3;
             color: #fff;
+        }
+
+        /* Subcategory styling */
+        .category-item.category-header {
+            background: linear-gradient(135deg, #f5f5f5, #eeeeee);
+            font-weight: 600;
+            margin-top: 12px;
+        }
+
+        .category-item.category-header:first-of-type {
+            margin-top: 0;
+        }
+
+        .category-item.subcategory-item {
+            padding-left: 28px;
+            background: #fff;
+            border-left: 3px solid #e0e0e0;
+            margin-left: 8px;
+            margin-bottom: 4px;
+            font-size: 13px;
+        }
+
+        .category-item.subcategory-item:hover {
+            border-left-color: #2196F3;
+        }
+
+        .category-item.subcategory-item.active {
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            border-left-color: #2196F3;
+        }
+
+        .category-item.subcategory-item .category-name {
+            font-size: 13px;
+            font-weight: 400;
+        }
+
+        .category-item.subcategory-item .category-count {
+            font-size: 11px;
+            padding: 2px 8px;
         }
 
         /* Main content area adjustment */
@@ -1642,49 +1699,217 @@ HTML_TEMPLATE = """
         let currentCategory = 'all';  // Track selected category
         const useSupabase = {{ 'true' if use_supabase else 'false' }};
 
+        // Category organization structure
+        const CATEGORY_STRUCTURE = {
+            tops_base: {
+                label: 'Base Layer',
+                icon: '👕',
+                subcategories: {
+                    tshirts: { label: 'T-Shirts', icon: '👕', keywords: ['t-shirt', 'tshirt', 'tee'] },
+                    longsleeve: { label: 'Long Sleeve', icon: '👕', keywords: ['long sleeve', 'longsleeve'] },
+                    shirts: { label: 'Shirts', icon: '👔', keywords: ['shirt', 'button', 'oxford', 'dress shirt'] },
+                    polos: { label: 'Polos', icon: '👕', keywords: ['polo'] },
+                    tanks: { label: 'Tanks & Henleys', icon: '🎽', keywords: ['tank', 'henley', 'sleeveless'] }
+                }
+            },
+            tops_mid: {
+                label: 'Mid Layer',
+                icon: '🧶',
+                subcategories: {
+                    sweaters: { label: 'Sweaters', icon: '🧶', keywords: ['sweater', 'knit', 'pullover'] },
+                    cardigans: { label: 'Cardigans', icon: '🧶', keywords: ['cardigan'] },
+                    hoodies: { label: 'Hoodies', icon: '🧥', keywords: ['hoodie', 'hooded'] },
+                    sweatshirts: { label: 'Sweatshirts', icon: '👕', keywords: ['sweatshirt', 'fleece', 'crewneck'] }
+                }
+            },
+            bottoms: {
+                label: 'Bottoms',
+                icon: '👖',
+                subcategories: {
+                    pants: { label: 'Pants', icon: '👖', keywords: ['pant', 'trouser', 'chino', 'jean', 'denim', 'jogger', 'cargo'] },
+                    shorts: { label: 'Shorts', icon: '🩳', keywords: ['short', 'bermuda', 'swim short'] }
+                }
+            },
+            outerwear: {
+                label: 'Outerwear',
+                icon: '🧥',
+                subcategories: {
+                    jackets: { label: 'Jackets', icon: '🧥', keywords: ['jacket', 'bomber', 'denim jacket', 'leather jacket'] },
+                    coats: { label: 'Coats', icon: '🧥', keywords: ['coat', 'overcoat', 'trench', 'parka', 'puffer'] },
+                    blazers: { label: 'Blazers', icon: '🤵', keywords: ['blazer', 'sport coat', 'suit jacket'] },
+                    vests: { label: 'Vests', icon: '🦺', keywords: ['vest', 'gilet', 'waistcoat'] }
+                }
+            },
+            shoes: {
+                label: 'Shoes',
+                icon: '👟',
+                subcategories: {}
+            }
+        };
+
+        // Classify a product into the organized structure
+        function classifyProduct(product) {
+            const name = (product.name || '').toLowerCase();
+            const subcat = (product.subcategory || '').toLowerCase();
+            const category = (product.category || '').toLowerCase();
+            const searchText = `${name} ${subcat} ${category}`;
+
+            // Check each main category and its subcategories
+            for (const [mainCat, config] of Object.entries(CATEGORY_STRUCTURE)) {
+                for (const [subCatKey, subConfig] of Object.entries(config.subcategories)) {
+                    for (const keyword of subConfig.keywords) {
+                        if (searchText.includes(keyword)) {
+                            return { main: mainCat, sub: subCatKey };
+                        }
+                    }
+                }
+            }
+
+            // Fallback based on category field
+            if (category.includes('shoe') || category.includes('footwear')) {
+                return { main: 'shoes', sub: null };
+            }
+            if (category.includes('bottom') || category.includes('pant') || category.includes('short')) {
+                return { main: 'bottoms', sub: 'pants' };
+            }
+            if (category.includes('outer') || category.includes('jacket') || category.includes('coat')) {
+                return { main: 'outerwear', sub: 'jackets' };
+            }
+            if (category.includes('top') || category.includes('shirt') || category.includes('tee')) {
+                return { main: 'tops_base', sub: 'tshirts' };
+            }
+
+            return { main: 'other', sub: null };
+        }
+
         // Build category sidebar from products data
         function buildCategorySidebar() {
             const categoryList = document.getElementById('categoryList');
             if (!categoryList || !allProducts.length) return;
 
-            // Count products per category
-            const categoryCounts = {};
+            // Initialize counts structure dynamically from CATEGORY_STRUCTURE
+            const counts = { other: { total: 0 } };
+            for (const [mainCat, config] of Object.entries(CATEGORY_STRUCTURE)) {
+                counts[mainCat] = { total: 0 };
+                for (const subKey of Object.keys(config.subcategories)) {
+                    counts[mainCat][subKey] = 0;
+                }
+            }
+
+            // Classify each product
             allProducts.forEach(product => {
-                const category = product.category || 'Uncategorized';
-                categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+                const { main, sub } = classifyProduct(product);
+                if (counts[main]) {
+                    counts[main].total++;
+                    if (sub && counts[main][sub] !== undefined) {
+                        counts[main][sub]++;
+                    }
+                } else {
+                    counts.other.total++;
+                }
             });
 
             // Update "All Products" count
             document.getElementById('allCount').textContent = allProducts.length;
-
-            // Sort categories alphabetically
-            const sortedCategories = Object.keys(categoryCounts).sort();
 
             // Clear existing category items (except "All Products")
             const allCategoryItem = categoryList.querySelector('.all-categories');
             categoryList.innerHTML = '';
             categoryList.appendChild(allCategoryItem);
 
-            // Add category items
-            sortedCategories.forEach(category => {
-                const count = categoryCounts[category];
-                const li = document.createElement('li');
-                li.className = 'category-item';
-                li.setAttribute('data-category', category);
-                li.onclick = () => filterByCategory(category);
+            // Build organized category structure
+            const orderedCategories = ['tops_base', 'tops_mid', 'bottoms', 'outerwear', 'shoes'];
 
-                // Get category icon based on name
-                const icon = getCategoryIcon(category);
+            orderedCategories.forEach(mainCat => {
+                const config = CATEGORY_STRUCTURE[mainCat];
+                const mainCount = counts[mainCat]?.total || 0;
 
-                li.innerHTML = `
-                    <span class="category-name">${icon} ${formatCategoryName(category)}</span>
-                    <span class="category-count">${count}</span>
+                // Main category header
+                const mainLi = document.createElement('li');
+                mainLi.className = 'category-item category-header';
+                mainLi.setAttribute('data-category', mainCat);
+                mainLi.onclick = () => filterByOrganizedCategory(mainCat, null);
+                mainLi.innerHTML = `
+                    <span class="category-name">${config.icon} ${config.label}</span>
+                    <span class="category-count">${mainCount}</span>
                 `;
-                categoryList.appendChild(li);
+                categoryList.appendChild(mainLi);
+
+                // Subcategories
+                const subEntries = Object.entries(config.subcategories);
+                if (subEntries.length > 0) {
+                    subEntries.forEach(([subKey, subConfig]) => {
+                        const subCount = counts[mainCat]?.[subKey] || 0;
+                        const subLi = document.createElement('li');
+                        subLi.className = 'category-item subcategory-item';
+                        subLi.setAttribute('data-category', `${mainCat}-${subKey}`);
+                        subLi.onclick = () => filterByOrganizedCategory(mainCat, subKey);
+                        subLi.innerHTML = `
+                            <span class="category-name">${subConfig.icon} ${subConfig.label}</span>
+                            <span class="category-count">${subCount}</span>
+                        `;
+                        categoryList.appendChild(subLi);
+                    });
+                }
             });
+
+            // Add "Other" if there are uncategorized items
+            if (counts.other.total > 0) {
+                const otherLi = document.createElement('li');
+                otherLi.className = 'category-item';
+                otherLi.setAttribute('data-category', 'other');
+                otherLi.onclick = () => filterByOrganizedCategory('other', null);
+                otherLi.innerHTML = `
+                    <span class="category-name">📦 Other</span>
+                    <span class="category-count">${counts.other.total}</span>
+                `;
+                categoryList.appendChild(otherLi);
+            }
         }
 
-        // Get icon for category
+        // Filter by organized category
+        function filterByOrganizedCategory(mainCat, subCat) {
+            currentCategory = subCat ? `${mainCat}-${subCat}` : mainCat;
+
+            // Update active state in sidebar
+            document.querySelectorAll('.category-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.getAttribute('data-category') === currentCategory) {
+                    item.classList.add('active');
+                }
+            });
+
+            // Filter products
+            if (mainCat === 'all') {
+                filteredProducts = [...allProducts];
+            } else {
+                filteredProducts = allProducts.filter(p => {
+                    const { main, sub } = classifyProduct(p);
+                    if (subCat) {
+                        return main === mainCat && sub === subCat;
+                    }
+                    return main === mainCat;
+                });
+            }
+
+            // Update products array and reset to first product
+            products = filteredProducts;
+            currentIndex = 0;
+            currentImageIndex = 0;
+
+            if (products.length > 0) {
+                displayProduct(0);
+            } else {
+                document.getElementById('productCard').innerHTML = `
+                    <div class="no-data">
+                        <h2>No products found</h2>
+                        <p>No products in this category</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Get icon for category (legacy support)
         function getCategoryIcon(category) {
             const icons = {
                 'shirts': '👔',
@@ -1721,40 +1946,14 @@ HTML_TEMPLATE = """
                 .join(' ');
         }
 
-        // Filter products by category
+        // Filter products by category (legacy support)
         function filterByCategory(category) {
-            currentCategory = category;
-
-            // Update active state in sidebar
-            document.querySelectorAll('.category-item').forEach(item => {
-                item.classList.remove('active');
-                if (item.getAttribute('data-category') === category) {
-                    item.classList.add('active');
-                }
-            });
-
-            // Filter products
             if (category === 'all') {
-                filteredProducts = [...allProducts];
-            } else {
-                filteredProducts = allProducts.filter(p => p.category === category);
+                filterByOrganizedCategory('all', null);
+                return;
             }
-
-            // Update products array and reset to first product
-            products = filteredProducts;
-            currentIndex = 0;
-
-            if (products.length > 0) {
-                displayProduct(0);
-            } else {
-                document.getElementById('productCard').innerHTML = `
-                    <div class="no-data">
-                        <h2>No products in this category</h2>
-                        <p>Select a different category or view all products.</p>
-                    </div>
-                `;
-                document.getElementById('counter').textContent = 'No products';
-            }
+            // For legacy category names, try to map to organized structure
+            filterByOrganizedCategory(category, null);
         }
 
         async function loadProducts() {
@@ -1961,16 +2160,30 @@ HTML_TEMPLATE = """
 
             let sizeTags = '';
             if (sizesAvailability.length > 0) {
-                // New format: [{"size": "M", "available": true}, ...]
+                // New format: [{"size": "M", "available": true, "availability": "in_stock"}, ...]
                 sizeTags = sizesAvailability.map(s => {
                     const sizeLabel = typeof s === 'object' ? s.size : s;
                     const isAvailable = typeof s === 'object' ? s.available : true;
+                    const availability = typeof s === 'object' ? (s.availability || 'unknown') : 'unknown';
 
-                    if (isAvailable) {
-                        return `<span class="tag">${sizeLabel}</span>`;
+                    // Determine styling and tooltip based on availability
+                    let style = '';
+                    let tooltip = '';
+                    let indicator = '';
+
+                    if (availability === 'out_of_stock' || !isAvailable) {
+                        style = 'background: #f5f5f5; color: #999; text-decoration: line-through;';
+                        tooltip = 'Out of stock';
+                    } else if (availability === 'low_on_stock') {
+                        style = 'background: #fff3e0; color: #e65100; border: 1px solid #ffcc80;';
+                        tooltip = 'Low stock – only a few left';
+                        indicator = '<span style="display: inline-block; width: 6px; height: 6px; background: #ff9800; border-radius: 50%; margin-left: 6px; animation: pulse 1.5s infinite;"></span>';
                     } else {
-                        return `<span class="tag" style="background: #ffebee; color: #c62828; text-decoration: line-through; opacity: 0.7;" title="Out of stock">${sizeLabel}</span>`;
+                        style = 'background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9;';
+                        tooltip = 'In stock';
                     }
+
+                    return `<span class="tag" style="${style} cursor: default; transition: all 0.2s;" title="${tooltip}">${sizeLabel}${indicator}</span>`;
                 }).join('');
             } else if (sizesOld.length > 0) {
                 // Old format: ["S", "M", "L"]
@@ -1993,47 +2206,6 @@ HTML_TEMPLATE = """
                     <button class="tag-delete-btn" data-field="style_tag" data-value="${tagValue}" data-rejected="${isRejected}" onclick="handleTagDeleteClick(this)" title="${deleteTitle}">${deleteSymbol}</button>
                 </span>`;
             }).join('');
-
-            // Build fit badge (teal/cyan - distinct from curator colors)
-            let fitBadge = '';
-            if (product.fit) {
-                const fitValue = product.fit;
-                const isFitRejected = isTagRejected('fit', fitValue);
-                const fitRejectedClass = isFitRejected ? 'rejected-tag' : '';
-                const fitDeleteTitle = isFitRejected ? 'Undo rejection (restore tag)' : 'Mark as incorrect';
-                const fitDeleteSymbol = isFitRejected ? '↩' : '×';
-
-                fitBadge = `<span class="tag-container">
-                    <span class="tag ${fitRejectedClass}" style="background:#e0f7fa;color:#00838f;" data-field="fit" data-value="${fitValue}" data-type="inferred">${fitValue}</span>
-                    <button class="tag-delete-btn" data-field="fit" data-value="${fitValue}" data-rejected="${isFitRejected}" data-reasoning="" onclick="handleTagDeleteClick(this)" title="${fitDeleteTitle}">${fitDeleteSymbol}</button>
-                </span>`;
-            }
-
-            // Build weight badge with reasoning (amber/gold - distinct from curator colors)
-            let weightBadge = '';
-            let weightReasoning = '';
-            if (product.weight) {
-                let weightValue = '';
-                let weightReasoningText = '';
-
-                if (typeof product.weight === 'string') {
-                    weightValue = product.weight;
-                } else {
-                    weightValue = product.weight.value;
-                    weightReasoningText = (product.weight.reasoning || []).join(' • ');
-                    weightReasoning = weightReasoningText;
-                }
-
-                const isWeightRejected = isTagRejected('weight', weightValue);
-                const weightRejectedClass = isWeightRejected ? 'rejected-tag' : '';
-                const weightDeleteTitle = isWeightRejected ? 'Undo rejection (restore tag)' : 'Mark as incorrect';
-                const weightDeleteSymbol = isWeightRejected ? '↩' : '×';
-
-                weightBadge = `<span class="tag-container">
-                    <span class="tag ${weightRejectedClass}" style="background:#fff8e1;color:#ff8f00;" data-field="weight" data-value="${weightValue}" data-type="inferred">${weightValue}</span>
-                    <button class="tag-delete-btn" data-field="weight" data-value="${weightValue}" data-rejected="${isWeightRejected}" data-reasoning="${weightReasoningText}" onclick="handleTagDeleteClick(this)" title="${weightDeleteTitle}">${weightDeleteSymbol}</button>
-                </span>`;
-            }
 
             // Build formality display
             let formalityHtml = '';
@@ -2073,26 +2245,28 @@ HTML_TEMPLATE = """
                 const curatorColorInfo = isCurated ? (curatorColors[curatedBy] || { bg: '#9c27b0' }) : null;
 
                 formalityHtml = `
-                    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; ${isCurated ? `border: 2px solid ${curatorColorInfo.bg};` : ''}">
-                        <h3 class="section-title" style="margin-top: 0;">
-                            Formality
-                            ${isCurated ? `<span style="font-size: 11px; font-weight: normal; background: ${curatorColorInfo.bg}; color: white; padding: 2px 6px; border-radius: 3px; margin-left: 8px;">Curated by ${curatedBy}</span>` : ''}
-                        </h3>
-                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
-                            <div style="font-size: 32px; font-weight: bold; color: ${barColor};">${displayScore}/5</div>
-                            <div>
-                                <div style="font-size: 18px; font-weight: 500;">${displayLabel}</div>
-                                <div style="display: flex; gap: 2px; margin-top: 5px;">
-                                    ${[1,2,3,4,5].map(i => `<div style="width: 30px; height: 8px; border-radius: 4px; background: ${i <= displayScore ? barColor : '#ddd'};"></div>`).join('')}
-                                </div>
+                    <div class="ai-section" style="margin-top: 24px; padding: 20px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-radius: 12px; border: 1px solid #e0e0e0; ${isCurated ? `border-color: ${curatorColorInfo.bg}; border-width: 2px;` : ''}">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 1px;">Formality</span>
+                                ${isCurated ? `<span style="font-size: 10px; font-weight: 500; background: ${curatorColorInfo.bg}; color: white; padding: 3px 8px; border-radius: 10px;">Curated by ${curatedBy}</span>` : ''}
                             </div>
                             ${isCurated ? `
-                                <button class="tag-delete-btn" onclick="handleCuratedTagDelete('formality', '${curatedFormality[0].field_value}', '${curatedBy}')" title="Delete curated formality" style="margin-left: auto; font-size: 16px;">×</button>
+                                <button class="tag-delete-btn" onclick="handleCuratedTagDelete('formality', '${curatedFormality[0].field_value}', '${curatedBy}')" title="Delete curated formality" style="font-size: 14px; padding: 4px 8px;">×</button>
                             ` : ''}
                         </div>
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div style="font-size: 36px; font-weight: 700; color: ${barColor}; line-height: 1;">${displayScore}</div>
+                            <div style="flex: 1;">
+                                <div style="font-size: 16px; font-weight: 600; color: #333; margin-bottom: 8px;">${displayLabel}</div>
+                                <div style="display: flex; gap: 4px;">
+                                    ${[1,2,3,4,5].map(i => `<div style="flex: 1; height: 6px; border-radius: 3px; background: ${i <= displayScore ? barColor : '#e0e0e0'}; transition: background 0.2s;"></div>`).join('')}
+                                </div>
+                            </div>
+                        </div>
                         ${!isCurated && displayReasoning.length > 0 ? `
-                            <div style="font-size: 12px; color: #666; margin-top: 10px;">
-                                <strong>Reasoning:</strong> ${displayReasoning.join(' • ')}
+                            <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid #e8e8e8; font-size: 12px; color: #888; line-height: 1.5;">
+                                ${displayReasoning.join(' · ')}
                             </div>
                         ` : ''}
                         <div id="curateFormalityInput"></div>
@@ -2101,9 +2275,9 @@ HTML_TEMPLATE = """
             } else {
                 // No formality at all - show placeholder with curation input
                 formalityHtml = `
-                    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                        <h3 class="section-title" style="margin-top: 0;">Formality</h3>
-                        <span style="color:#999;font-size:13px;">Not specified</span>
+                    <div class="ai-section" style="margin-top: 24px; padding: 20px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-radius: 12px; border: 1px solid #e0e0e0;">
+                        <span style="font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 1px;">Formality</span>
+                        <div style="margin-top: 12px; color: #999; font-size: 13px;">Not specified</div>
                         <div id="curateFormalityInput"></div>
                     </div>
                 `;
@@ -2129,80 +2303,278 @@ HTML_TEMPLATE = """
 
                     ${formalityHtml}
 
-                    ${fitBadge || curatedFit.length > 0 ? `
-                        <h3 class="section-title">Fit</h3>
-                        <div class="tag-list" id="fitTagsList">${fitBadge}${renderCuratedTagsInline(curatedFit)}</div>
-                    ` : `
-                        <h3 class="section-title">Fit</h3>
-                        <div class="tag-list" id="fitTagsList"><span style="color:#999;font-size:13px;">Not specified</span></div>
-                    `}
-                    <div id="curateFitInput"></div>
+                    ${product.tags_final ? `
+                        <div class="ai-section" style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-radius: 12px; border: 1px solid #e0e0e0;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                                <span style="font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 1px;">ReFitd Canonical Tags</span>
+                                <span style="font-size: 10px; font-weight: 600; padding: 4px 10px; border-radius: 10px; background: ${
+                                    product.curation_status_refitd === 'approved' ? '#4CAF50' :
+                                    product.curation_status_refitd === 'needs_review' ? '#FF9800' :
+                                    product.curation_status_refitd === 'needs_fix' ? '#f44336' : '#bdbdbd'
+                                }; color: white; text-transform: uppercase; letter-spacing: 0.5px;">${product.curation_status_refitd || 'pending'}</span>
+                            </div>
 
-                    ${weightBadge || curatedWeight.length > 0 ? `
-                        <h3 class="section-title">Weight</h3>
-                        <div class="tag-list" id="weightTagsList">${weightBadge}${renderCuratedTagsInline(curatedWeight)}</div>
-                        ${weightReasoning ? `<div style="font-size: 12px; color: #666; margin-top: 5px;"><em>${weightReasoning}</em></div>` : ''}
-                    ` : `
-                        <h3 class="section-title">Weight</h3>
-                        <div class="tag-list" id="weightTagsList"><span style="color:#999;font-size:13px;">Not specified</span></div>
-                    `}
-                    <div id="curateWeightInput"></div>
+                            <!-- Style Identity (array field) -->
+                            <div style="margin-bottom: 20px;">
+                                <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px;">Style Identity</div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                    ${(product.tags_final.style_identity || []).map(s => `
+                                        <span style="display: inline-flex; align-items: center; background: #1a1a1a; color: white; font-weight: 500; padding: 8px 16px; border-radius: 6px; font-size: 13px; gap: 8px;">
+                                            ${s}
+                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagRemove('style_identity', '${s.replace(/'/g, "\\'")}')" title="Remove ${s}" style="display: none; background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; padding: 0; font-size: 16px; line-height: 1; margin-left: 4px;">×</button>
+                                        </span>
+                                    `).join('')}
+                                    ${(product.tags_final.style_identity || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
+                                    <div class="canonical-tag-add-input" style="display: none;">
+                                        <input type="text" placeholder="Add style..." style="padding: 8px 12px; border: 1px dashed #ccc; border-radius: 6px; font-size: 13px; width: 120px;" onkeypress="if(event.key==='Enter'){handleCanonicalTagAdd('style_identity', this.value); this.value='';}" />
+                                    </div>
+                                </div>
+                            </div>
 
-                    ${styleTags || curatedTags.length > 0 ? `
-                        <h3 class="section-title">
-                            Style Tags <span style="font-size:10px;color:#999;font-weight:normal;">(hover for reasoning)</span>
-                            <button class="ai-generate-btn" onclick="generateAITagsForProduct('${product.product_id}')" id="aiGenTagsBtn">
-                                <span class="spinner"></span>
-                            <span class="btn-text">🤖 AI Generate</span>
-                            </button>
-                            <button class="reset-metadata-btn" onclick="resetProductMetadata('${product.product_id}')" title="Remove all curated and AI-generated tags, restore to original scraped data">🔄 Reset to Original</button>
-                        </h3>
-                        <div class="tag-list" id="styleTagsList">${styleTags}${renderCuratedTagsInline(curatedTags)}${renderAIGeneratedTagsInline(aiGeneratedTags)}</div>
-                    ` : `
-                        <h3 class="section-title">
-                            Style Tags
-                            <button class="ai-generate-btn" onclick="generateAITagsForProduct('${product.product_id}')" id="aiGenTagsBtn">
-                                <span class="spinner"></span>
-                                <span class="btn-text">🤖 AI Generate</span>
-                            </button>
-                            <button class="reset-metadata-btn" onclick="resetProductMetadata('${product.product_id}')" title="Remove all curated and AI-generated tags, restore to original scraped data">🔄 Reset to Original</button>
-                        </h3>
-                        <div class="tag-list" id="styleTagsList">${renderAIGeneratedTagsInline(aiGeneratedTags) || '<span style="color:#999;font-size:13px;">No style tags</span>'}</div>
-                    `}
-                    <div id="aiTagsStatus" style="margin-top: 8px; font-size: 12px;"></div>
-                    <div id="curateStyleTagInput"></div>
+                            <!-- Top Layer Role (only for tops) -->
+                            ${product.tags_final.top_layer_role || (product.category && product.category.toLowerCase().includes('top')) ? `
+                                <div style="margin-bottom: 16px; background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%); padding: 14px 16px; border-radius: 8px; border: 1px solid #ffd54f;">
+                                    <div style="font-size: 10px; font-weight: 600; color: #f57f17; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Top Layer Role</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                        ${product.tags_final.top_layer_role ? `
+                                            <span style="display: inline-flex; align-items: center; background: ${product.tags_final.top_layer_role === 'base' ? '#4caf50' : '#2196f3'}; color: white; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; gap: 8px;">
+                                                ${product.tags_final.top_layer_role === 'base' ? '👕 Base Layer' : '🧶 Mid Layer'}
+                                                <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('top_layer_role', null)" title="Remove layer role" style="display: none; background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                            </span>
+                                        ` : `<span style="color: #999; font-size: 12px;">Not set</span>`}
+                                        <div class="canonical-tag-add-input" style="display: none;">
+                                            <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px;" onchange="if(this.value){handleCanonicalTagSet('top_layer_role', this.value); this.value='';}">
+                                                <option value="">Set layer...</option>
+                                                <option value="base">👕 Base Layer</option>
+                                                <option value="mid">🧶 Mid Layer</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div style="margin-top: 8px; font-size: 11px; color: #8d6e63;">
+                                        ${product.tags_final.top_layer_role === 'base' ? 'T-shirts, shirts, polos, tanks, henleys' : product.tags_final.top_layer_role === 'mid' ? 'Sweaters, cardigans, hoodies, knit pullovers' : 'Required for tops category'}
+                                    </div>
+                                </div>
+                            ` : ''}
 
-                    ${product.description ? `
-                        <h3 class="section-title">Description</h3>
-                        <p class="description">${product.description}</p>
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                                <!-- Silhouette (single-value field) -->
+                                <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                    <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Silhouette</div>
+                                    ${product.tags_final.silhouette ? `
+                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                            ${product.tags_final.silhouette}
+                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('silhouette', null)" title="Remove silhouette" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                        </span>
+                                    ` : `<span style="color: #ccc; font-size: 12px;">Not set</span>`}
+                                    <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
+                                        <input type="text" placeholder="Set silhouette..." style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; width: 100%;" onkeypress="if(event.key==='Enter'){handleCanonicalTagSet('silhouette', this.value); this.value='';}" />
+                                    </div>
+                                </div>
+                                <!-- Pattern (single-value field) -->
+                                <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                    <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Pattern</div>
+                                    ${product.tags_final.pattern ? `
+                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                            ${product.tags_final.pattern}
+                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('pattern', null)" title="Remove pattern" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                        </span>
+                                    ` : `<span style="color: #ccc; font-size: 12px;">Not set</span>`}
+                                    <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
+                                        <input type="text" placeholder="Set pattern..." style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; width: 100%;" onkeypress="if(event.key==='Enter'){handleCanonicalTagSet('pattern', this.value); this.value='';}" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- AI Formality (single-value field) -->
+                            <div style="margin-top: 16px; background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); padding: 14px 16px; border-radius: 8px; border: 1px solid #81c784;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                    <div style="font-size: 10px; font-weight: 600; color: #2e7d32; text-transform: uppercase; letter-spacing: 0.5px;">AI Formality</div>
+                                    <span style="font-size: 9px; background: #4caf50; color: white; padding: 2px 6px; border-radius: 4px;">AI Generated</span>
+                                </div>
+                                ${product.tags_final.formality ? `
+                                    <div style="display: flex; align-items: center; gap: 12px;">
+                                        <span style="display: inline-flex; align-items: center; background: ${
+                                            product.tags_final.formality === 'athletic' ? '#ff6b6b' :
+                                            product.tags_final.formality === 'casual' ? '#ffa94d' :
+                                            product.tags_final.formality === 'smart-casual' ? '#ffd43b' :
+                                            product.tags_final.formality === 'business-casual' ? '#69db7c' :
+                                            product.tags_final.formality === 'formal' ? '#339af0' : '#999'
+                                        }; color: ${['athletic', 'casual'].includes(product.tags_final.formality) ? '#fff' : '#333'}; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 600; gap: 8px;">
+                                            ${product.tags_final.formality}
+                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('formality', null)" title="Remove formality" style="display: none; background: none; border: none; color: rgba(0,0,0,0.5); cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                        </span>
+                                        ${product.formality ? `
+                                            <span style="font-size: 11px; color: #666;">vs scraped: <strong>${product.formality.label || 'N/A'}</strong></span>
+                                        ` : ''}
+                                    </div>
+                                ` : `<span style="color: #999; font-size: 12px;">Not set (will default to "casual")</span>`}
+                                <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
+                                    <select style="padding: 6px 10px; border: 1px dashed #66bb6a; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagSet('formality', this.value); this.value='';}">
+                                        <option value="">Set formality...</option>
+                                        <option value="athletic">1 - Athletic</option>
+                                        <option value="casual">2 - Casual</option>
+                                        <option value="smart-casual">3 - Smart Casual</option>
+                                        <option value="business-casual">4 - Business Casual</option>
+                                        <option value="formal">5 - Formal</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Context (array field) -->
+                            <div style="margin-top: 16px; background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">Context</div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                    ${(product.tags_final.context || []).map(c => `
+                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px;">
+                                            ${c}
+                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagRemove('context', '${c.replace(/'/g, "\\'")}')" title="Remove ${c}" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                        </span>
+                                    `).join('')}
+                                    ${(product.tags_final.context || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
+                                    <div class="canonical-tag-add-input" style="display: none;">
+                                        <input type="text" placeholder="Add context..." style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; width: 110px;" onkeypress="if(event.key==='Enter'){handleCanonicalTagAdd('context', this.value); this.value='';}" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Construction Details (array field) -->
+                            <div style="margin-top: 12px; background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">Construction</div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                    ${(product.tags_final.construction_details || []).map(d => `
+                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px;">
+                                            ${d}
+                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagRemove('construction_details', '${d.replace(/'/g, "\\'")}')" title="Remove ${d}" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                        </span>
+                                    `).join('')}
+                                    ${(product.tags_final.construction_details || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
+                                    <div class="canonical-tag-add-input" style="display: none;">
+                                        <input type="text" placeholder="Add detail..." style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; width: 110px;" onkeypress="if(event.key==='Enter'){handleCanonicalTagAdd('construction_details', this.value); this.value='';}" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pairing Tags (array field) -->
+                            <div style="margin-top: 12px; background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">Pairing</div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                    ${(product.tags_final.pairing_tags || []).map(p => `
+                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px;">
+                                            ${p}
+                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagRemove('pairing_tags', '${p.replace(/'/g, "\\'")}')" title="Remove ${p}" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                        </span>
+                                    `).join('')}
+                                    ${(product.tags_final.pairing_tags || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
+                                    <div class="canonical-tag-add-input" style="display: none;">
+                                        <input type="text" placeholder="Add pairing..." style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; width: 110px;" onkeypress="if(event.key==='Enter'){handleCanonicalTagAdd('pairing_tags', this.value); this.value='';}" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Shoe-specific fields -->
+                            ${product.tags_final.shoe_type || product.tags_final.profile || product.tags_final.closure ? `
+                                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #eee;">
+                                    <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Shoe Details</div>
+                                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                                        ${product.tags_final.shoe_type ? `
+                                            <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                                <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Type</div>
+                                                <span style="display: inline-flex; align-items: center; background: #1a1a1a; color: white; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                                    ${product.tags_final.shoe_type}
+                                                    <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('shoe_type', null)" title="Remove shoe type" style="display: none; background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                                </span>
+                                            </div>
+                                        ` : ''}
+                                        ${product.tags_final.profile ? `
+                                            <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                                <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Profile</div>
+                                                <span style="display: inline-flex; align-items: center; background: #1a1a1a; color: white; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                                    ${product.tags_final.profile}
+                                                    <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('profile', null)" title="Remove profile" style="display: none; background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                                </span>
+                                            </div>
+                                        ` : ''}
+                                        ${product.tags_final.closure ? `
+                                            <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                                <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Closure</div>
+                                                <span style="display: inline-flex; align-items: center; background: #1a1a1a; color: white; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                                    ${product.tags_final.closure}
+                                                    <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('closure', null)" title="Remove closure" style="display: none; background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                                </span>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            ${product.tag_policy_version ? `
+                                <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee; font-size: 11px; color: #bbb;">
+                                    Policy: ${product.tag_policy_version}
+                                </div>
+                            ` : ''}
+                        </div>
                     ` : ''}
 
-                    ${colorTags ? `
-                        <h3 class="section-title">Colors</h3>
-                        <div class="tag-list">${colorTags}</div>
-                    ` : ''}
+                    <!-- Product Details Section -->
+                    <div class="product-details-grid" style="margin-top: 24px; display: grid; gap: 20px;">
 
-                    ${sizeTags ? `
-                        <h3 class="section-title">Sizes</h3>
-                        <div class="tag-list">${sizeTags}</div>
-                    ` : ''}
+                        ${product.description ? `
+                            <div class="detail-card" style="background: #fafafa; border-radius: 12px; padding: 20px; border: 1px solid #eee;">
+                                <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Description</div>
+                                <p style="color: #333; line-height: 1.7; font-size: 14px; margin: 0;">${product.description}</p>
+                            </div>
+                        ` : ''}
 
-                    ${materialTags ? `
-                        <h3 class="section-title">Materials</h3>
-                        <div class="tag-list">${materialTags}</div>
-                    ` : ''}
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+                            ${colorTags ? `
+                                <div class="detail-card" style="background: #fafafa; border-radius: 12px; padding: 20px; border: 1px solid #eee;">
+                                    <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Colors</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">${colorTags}</div>
+                                </div>
+                            ` : ''}
 
-                    ${product.composition ? `
-                        <h3 class="section-title">Composition</h3>
-                        <p class="description" style="background: #f5f5f5; padding: 10px; border-radius: 4px; font-family: monospace;">
-                            ${product.composition}
-                        </p>
-                    ` : ''}
+                            ${sizeTags ? `
+                                <div class="detail-card" style="background: #fafafa; border-radius: 12px; padding: 20px; border: 1px solid #eee;">
+                                    <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">
+                                        Sizes
+                                        <span style="font-weight: 400; font-size: 9px; color: #bbb; text-transform: none; letter-spacing: 0; margin-left: 6px;">(hover for stock)</span>
+                                    </div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">${sizeTags}</div>
+                                    ${product.sizes_checked_at ? `
+                                        <div style="margin-top: 12px; font-size: 10px; font-style: italic; color: #bbb;">
+                                            Updated ${new Date(product.sizes_checked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${new Date(product.sizes_checked_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            ` : ''}
+                        </div>
 
-                    <h3 class="section-title">Source URL</h3>
-                    <a href="${product.url}" target="_blank" class="url-link">${product.url}</a>
+                        ${product.composition || materialTags ? `
+                            <div class="detail-card" style="background: #fafafa; border-radius: 12px; padding: 20px; border: 1px solid #eee;">
+                                <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Composition</div>
+                                ${product.composition ? `
+                                    <p style="color: #333; font-size: 14px; font-weight: 500; margin: 0; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;">${product.composition}</p>
+                                ` : ''}
+                                ${materialTags ? `
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: ${product.composition ? '12px' : '0'};">${materialTags}</div>
+                                ` : ''}
+                            </div>
+                        ` : ''}
 
-                    <div class="validation-section">
+                        <div class="detail-card" style="background: #fafafa; border-radius: 12px; padding: 16px 20px; border: 1px solid #eee; display: flex; align-items: center; justify-content: space-between;">
+                            <div>
+                                <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">Source</div>
+                                <a href="${product.url}" target="_blank" style="color: #1a1a1a; text-decoration: none; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px;">
+                                    <span style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">zara.com</span>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.5;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                                </a>
+                            </div>
+                            <a href="${product.url}" target="_blank" style="background: #1a1a1a; color: white; text-decoration: none; font-size: 12px; font-weight: 500; padding: 8px 16px; border-radius: 6px; transition: all 0.2s;" onmouseover="this.style.background='#333'" onmouseout="this.style.background='#1a1a1a'">View on Zara →</a>
+                        </div>
+
+                    </div>
+
+                    <div class="validation-section" style="margin-top: 24px;">
                         <h3 class="section-title">Curation Status</h3>
                         <div id="curationStatusArea">
                             ${curationStatus && curationStatus.status === 'complete' ? `
@@ -2425,10 +2797,23 @@ HTML_TEMPLATE = """
             curateMode = false;
             currentCurator = null;
 
+            // Hide canonical tag curation controls
+            hideCurateInputs();
+
             // Re-render the product to hide curate inputs
             if (products.length > 0) {
                 displayProduct(currentIndex);
             }
+        }
+
+        function hideCurateInputs() {
+            // Hide canonical tag delete buttons and add inputs
+            document.querySelectorAll('.canonical-tag-delete-btn').forEach(btn => {
+                btn.style.display = 'none';
+            });
+            document.querySelectorAll('.canonical-tag-add-input').forEach(input => {
+                input.style.display = 'none';
+            });
         }
 
         async function selectCurator(curator) {
@@ -2457,6 +2842,14 @@ HTML_TEMPLATE = """
             if (!currentCurator) return;
 
             const colorInfo = curatorColors[currentCurator];
+
+            // Show/hide canonical tag delete buttons and add inputs
+            document.querySelectorAll('.canonical-tag-delete-btn').forEach(btn => {
+                btn.style.display = 'inline';
+            });
+            document.querySelectorAll('.canonical-tag-add-input').forEach(input => {
+                input.style.display = 'inline-block';
+            });
 
             // Style Tags input
             const styleInputContainer = document.getElementById('curateStyleTagInput');
@@ -2665,6 +3058,137 @@ HTML_TEMPLATE = """
             const reasoning = button.dataset.reasoning || '';
 
             handleInferredTagDelete(fieldName, fieldValue, reasoning, isRejected);
+        }
+
+        // ============================================
+        // CANONICAL TAG CURATION FUNCTIONS
+        // ============================================
+
+        async function handleCanonicalTagAdd(fieldName, value) {
+            if (!curateMode || !currentCurator) {
+                alert('Please enter curate mode first to add tags.');
+                return;
+            }
+
+            const product = products[currentIndex];
+            if (!value || !value.trim()) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/canonical_tags/${product.product_id}/field`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        field_name: fieldName,
+                        action: 'add',
+                        value: value.trim(),
+                        curator: currentCurator
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    console.log(`✓ Added canonical tag: "${value}" to ${fieldName}`);
+                    // Update local data
+                    if (product.tags_final) {
+                        product.tags_final = result.tags_final;
+                    }
+                    // Refresh the display
+                    await displayProduct(currentIndex);
+                    showCurateInputs();
+                } else {
+                    console.error('Failed to add:', result.error);
+                    alert('Failed to add tag: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error adding canonical tag:', error);
+                alert('Error adding tag');
+            }
+        }
+
+        async function handleCanonicalTagRemove(fieldName, value) {
+            if (!curateMode || !currentCurator) {
+                alert('Please enter curate mode first to remove tags.');
+                return;
+            }
+
+            const product = products[currentIndex];
+
+            if (!confirm(`Remove "${value}" from ${fieldName.replace(/_/g, ' ')}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/canonical_tags/${product.product_id}/field`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        field_name: fieldName,
+                        action: 'remove',
+                        value: value,
+                        curator: currentCurator
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    console.log(`✓ Removed canonical tag: "${value}" from ${fieldName}`);
+                    // Update local data
+                    if (product.tags_final) {
+                        product.tags_final = result.tags_final;
+                    }
+                    // Refresh the display
+                    await displayProduct(currentIndex);
+                    showCurateInputs();
+                } else {
+                    console.error('Failed to remove:', result.error);
+                    alert('Failed to remove tag: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error removing canonical tag:', error);
+                alert('Error removing tag');
+            }
+        }
+
+        async function handleCanonicalTagSet(fieldName, value) {
+            if (!curateMode || !currentCurator) {
+                alert('Please enter curate mode first to edit tags.');
+                return;
+            }
+
+            const product = products[currentIndex];
+
+            try {
+                const response = await fetch(`/api/canonical_tags/${product.product_id}/field`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        field_name: fieldName,
+                        action: 'set',
+                        value: value ? value.trim() : null,
+                        curator: currentCurator
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    console.log(`✓ Set canonical tag: ${fieldName} = "${value}"`);
+                    // Update local data
+                    if (product.tags_final) {
+                        product.tags_final = result.tags_final;
+                    }
+                    // Refresh the display
+                    await displayProduct(currentIndex);
+                    showCurateInputs();
+                } else {
+                    console.error('Failed to set:', result.error);
+                    alert('Failed to set tag: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error setting canonical tag:', error);
+                alert('Error setting tag');
+            }
         }
 
         async function handleCuratedTagDelete(fieldName, fieldValue, curator) {
@@ -4173,139 +4697,185 @@ HTML_TEMPLATE = """
             🤖 AI Technology Documentation
         </h2>
 
-        <!-- Model Overview -->
+        <!-- ReFitd Canonical Tagging Overview -->
         <div style="margin-bottom: 25px;">
             <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
-                📦 AI Model: Moondream
+                🏷️ ReFitd Canonical Tagging System
             </h3>
             <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 10px;">
-                This application uses <strong style="color: #fff;">Moondream</strong>, a lightweight vision-language model
-                specifically designed for efficient image understanding tasks. Moondream is an open-source model that runs
-                locally on your machine through <strong style="color: #fff;">Ollama</strong>, a local AI inference server.
+                The ReFitd tagging system uses a <strong style="color: #fff;">three-layer architecture</strong> for structured,
+                machine-readable fashion tags that power outfit generation.
             </p>
-        </div>
-
-        <!-- Why Moondream -->
-        <div style="margin-bottom: 25px;">
-            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
-                🎯 Why Moondream Was Selected
-            </h3>
-            <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
-                <li><strong style="color: #fff;">Lightweight & Fast:</strong> Moondream is optimized for speed, making it ideal for processing multiple product images without long wait times.</li>
-                <li><strong style="color: #fff;">Privacy-First:</strong> Runs entirely on your local machine—no product images or data are sent to external servers.</li>
-                <li><strong style="color: #fff;">Vision-Specialized:</strong> Unlike general-purpose LLMs, Moondream is specifically trained for visual understanding tasks.</li>
-                <li><strong style="color: #fff;">No API Costs:</strong> Being a local model, there are no per-request API charges or rate limits.</li>
-                <li><strong style="color: #fff;">Consistent Results:</strong> Low temperature settings (0.3) ensure reproducible, reliable tag generation.</li>
-            </ul>
-        </div>
-
-        <!-- What It's Good At -->
-        <div style="margin-bottom: 25px;">
-            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
-                ✨ What Moondream Excels At
-            </h3>
-            <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
-                <li><strong style="color: #fff;">Visual Feature Extraction:</strong> Identifying patterns, colors, textures, and materials in clothing images.</li>
-                <li><strong style="color: #fff;">Style Classification:</strong> Categorizing garments by aesthetic (minimal, streetwear, formal, etc.).</li>
-                <li><strong style="color: #fff;">Fit Recognition:</strong> Detecting silhouettes like slim, oversized, relaxed, or tailored fits.</li>
-                <li><strong style="color: #fff;">Detail Detection:</strong> Spotting specific features like collars, pockets, zippers, and embroidery.</li>
-                <li><strong style="color: #fff;">Context Understanding:</strong> Combining visual analysis with product name context for more accurate tags.</li>
-            </ul>
-        </div>
-
-        <!-- What It Actually Does -->
-        <div style="margin-bottom: 25px;">
-            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
-                ⚙️ How It Works In This Application
-            </h3>
-            <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; margin-bottom: 15px;">
-                <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
-                    When you click the <span style="background: linear-gradient(135deg, #00d4aa, #00a896); color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 500;">✨ AI Generate</span> button, the following process occurs:
-                </p>
-                <ol style="line-height: 1.9; color: #b0b0b0; padding-left: 20px;">
-                    <li><strong style="color: #fff;">Image Retrieval:</strong> The product's primary image is fetched from Supabase Storage.</li>
-                    <li><strong style="color: #fff;">Prompt Construction:</strong> A structured prompt is built combining the image with the product name and description.</li>
-                    <li><strong style="color: #fff;">Vision Analysis:</strong> Moondream analyzes the image and generates descriptive tags based on what it sees.</li>
-                    <li><strong style="color: #fff;">Vocabulary Filtering:</strong> The AI's raw output is filtered against the curated vocabulary (see below). Only tags that exist in the vocabulary are kept—this ensures consistency.</li>
-                    <li><strong style="color: #fff;">Validation:</strong> Filtered tags are deduplicated and normalized (lowercase, trimmed).</li>
-                    <li><strong style="color: #fff;">Duplicate Prevention:</strong> Generated tags are compared against existing inferred tags and previously generated AI tags to avoid repeats.</li>
-                    <li><strong style="color: #fff;">Storage:</strong> New, unique tags are saved to the <code style="background: #2d3748; padding: 2px 6px; border-radius: 4px;">ai_generated_tags</code> table in Supabase.</li>
-                </ol>
+            <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; margin-top: 15px;">
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; text-align: center;">
+                    <div style="background: rgba(100, 181, 246, 0.2); padding: 15px; border-radius: 8px; border: 1px solid #64b5f6;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🔵</div>
+                        <strong style="color: #64b5f6;">AI Sensor</strong>
+                        <p style="color: #b0b0b0; font-size: 12px; margin-top: 5px;">GPT-4o Vision analyzes images → tags with confidence</p>
+                    </div>
+                    <div style="background: rgba(255, 183, 77, 0.2); padding: 15px; border-radius: 8px; border: 1px solid #ffb74d;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">⚙️</div>
+                        <strong style="color: #ffb74d;">Tag Policy</strong>
+                        <p style="color: #b0b0b0; font-size: 12px; margin-top: 5px;">Applies thresholds & rules → filtered tags</p>
+                    </div>
+                    <div style="background: rgba(129, 199, 132, 0.2); padding: 15px; border-radius: 8px; border: 1px solid #81c784;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🏷️</div>
+                        <strong style="color: #81c784;">Canonical Tags</strong>
+                        <p style="color: #b0b0b0; font-size: 12px; margin-top: 5px;">Clean, confidence-free tags for generator</p>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Vocabulary Explanation -->
+        <!-- GPT-4o Model Overview -->
         <div style="margin-bottom: 25px;">
             <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
-                📚 The Curated Vocabulary System
+                📦 Primary AI Model: GPT-4o
             </h3>
-            <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; margin-bottom: 15px;">
-                <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
-                    <strong style="color: #fff;">Important:</strong> The ~86 style tags are <em>not</em> learned or generated by the AI model itself.
-                    They are a <strong style="color: #00d4aa;">manually curated vocabulary</strong> defined by developers to ensure consistent,
-                    controlled tagging across all products.
-                </p>
-                <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
-                    <strong style="color: #fff;">How it works:</strong>
-                </p>
-                <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px; margin-bottom: 15px;">
-                    <li>Moondream analyzes the image and outputs <em>any</em> descriptive tags it thinks are relevant</li>
-                    <li>The system then filters these through the vocabulary whitelist</li>
-                    <li>Only tags that match the curated vocabulary are accepted</li>
-                    <li>This prevents inconsistent or unusable tags like "nice-looking" or "blue-ish"</li>
-                </ul>
-                <p style="line-height: 1.7; color: #b0b0b0;">
-                    <strong style="color: #fff;">Why curate?</strong> A controlled vocabulary ensures that:
-                </p>
-                <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
-                    <li>Tags are consistent across all products (no "casual" vs "chill" variations)</li>
-                    <li>Search and filtering work reliably</li>
-                    <li>Tags are meaningful for fashion categorization</li>
-                    <li>The system can be extended with new tags as needed (see Vocabulary Manager below)</li>
-                </ul>
-            </div>
+            <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 10px;">
+                ReFitd uses <strong style="color: #fff;">GPT-4o</strong> (OpenAI's latest multimodal model) for generating
+                canonical tags. GPT-4o excels at visual understanding and produces consistent, structured JSON output.
+            </p>
+            <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
+                <li><strong style="color: #fff;">Vision + Language:</strong> Analyzes product images alongside title and description for comprehensive understanding</li>
+                <li><strong style="color: #fff;">Structured Output:</strong> Returns JSON with confidence scores for each tag</li>
+                <li><strong style="color: #fff;">Controlled Vocabulary:</strong> Prompted to use ONLY predefined tag values</li>
+                <li><strong style="color: #fff;">Low Temperature (0.3):</strong> Ensures reproducible, consistent results</li>
+            </ul>
         </div>
 
-        <!-- Tag Categories -->
-        <div style="margin-bottom: 15px;">
+        <!-- Canonical Tag Categories -->
+        <div style="margin-bottom: 25px;">
             <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
-                🏷️ Style Tag Categories
+                🏷️ Canonical Tag Categories
             </h3>
             <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
-                The AI generates tags from these predefined categories to ensure consistency:
+                The AI generates tags from these predefined categories with strict vocabulary control:
             </p>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-                <div style="background: rgba(100, 181, 246, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #64b5f6;">
-                    <strong style="color: #64b5f6;">Aesthetic:</strong>
-                    <span style="color: #b0b0b0; font-size: 13px;"> minimal, streetwear, preppy, vintage...</span>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+                <div style="background: rgba(26, 26, 46, 0.8); padding: 14px; border-radius: 8px; border-left: 3px solid #1a1a1a;">
+                    <strong style="color: #fff;">Style Identity (1-2, required):</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> minimal, classic, preppy, workwear, streetwear, rugged, tailoring, elevated-basics, normcore, sporty, outdoorsy, western, vintage, grunge, punk, utilitarian</span>
                 </div>
-                <div style="background: rgba(129, 199, 132, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #81c784;">
-                    <strong style="color: #81c784;">Fit:</strong>
-                    <span style="color: #b0b0b0; font-size: 13px;"> slim, relaxed, oversized, tailored...</span>
+                <div style="background: rgba(100, 181, 246, 0.1); padding: 14px; border-radius: 8px; border-left: 3px solid #64b5f6;">
+                    <strong style="color: #64b5f6;">Silhouette (1, required):</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"><br/>• Bottoms: straight, tapered, wide<br/>• Tops/Outerwear: boxy, structured, relaxed, longline, tailored</span>
                 </div>
-                <div style="background: rgba(255, 183, 77, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #ffb74d;">
-                    <strong style="color: #ffb74d;">Pattern:</strong>
-                    <span style="color: #b0b0b0; font-size: 13px;"> solid, striped, plaid, graphic...</span>
+                <div style="background: rgba(129, 199, 132, 0.1); padding: 14px; border-radius: 8px; border-left: 3px solid #81c784;">
+                    <strong style="color: #81c784;">Formality (1, AI-generated):</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"><br/>Scale 1→5: athletic, casual, smart-casual, business-casual, formal<br/><em style="color: #666;">(Compared with rule-based formality)</em></span>
                 </div>
-                <div style="background: rgba(186, 104, 200, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #ba68c8;">
-                    <strong style="color: #ba68c8;">Material:</strong>
-                    <span style="color: #b0b0b0; font-size: 13px;"> cotton, denim, linen, wool...</span>
+                <div style="background: rgba(255, 183, 77, 0.1); padding: 14px; border-radius: 8px; border-left: 3px solid #ffb74d;">
+                    <strong style="color: #ffb74d;">Context (0-2, optional):</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> everyday, work-appropriate, travel, evening, weekend</span>
                 </div>
-                <div style="background: rgba(255, 138, 128, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #ff8a80;">
-                    <strong style="color: #ff8a80;">Season:</strong>
-                    <span style="color: #b0b0b0; font-size: 13px;"> summer, winter, all-season...</span>
+                <div style="background: rgba(186, 104, 200, 0.1); padding: 14px; border-radius: 8px; border-left: 3px solid #ba68c8;">
+                    <strong style="color: #ba68c8;">Pattern (0-1, optional):</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> solid, stripe, check, textured</span>
                 </div>
-                <div style="background: rgba(79, 195, 247, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #4fc3f7;">
-                    <strong style="color: #4fc3f7;">Occasion:</strong>
-                    <span style="color: #b0b0b0; font-size: 13px;"> casual, formal, athletic, lounge...</span>
+                <div style="background: rgba(255, 138, 128, 0.1); padding: 14px; border-radius: 8px; border-left: 3px solid #ff8a80;">
+                    <strong style="color: #ff8a80;">Construction Details (0-2):</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"><br/>• Bottoms: pleated, flat-front, cargo, drawstring, elastic-waist<br/>• Tops: structured-shoulder, dropped-shoulder</span>
                 </div>
-                <div style="background: rgba(174, 213, 129, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #aed581;">
-                    <strong style="color: #aed581;">Color Mood:</strong>
-                    <span style="color: #b0b0b0; font-size: 13px;"> neutral, bold, muted, pastel...</span>
+                <div style="background: rgba(79, 195, 247, 0.1); padding: 14px; border-radius: 8px; border-left: 3px solid #4fc3f7;">
+                    <strong style="color: #4fc3f7;">Pairing Tags (0-3, scoring):</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"> neutral-base, statement-piece, easy-dress-up, easy-dress-down, high-versatility</span>
                 </div>
-                <div style="background: rgba(240, 98, 146, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #f06292;">
-                    <strong style="color: #f06292;">Details:</strong>
-                    <span style="color: #b0b0b0; font-size: 13px;"> pocket, collar, hood, distressed...</span>
+                <div style="background: rgba(255, 213, 79, 0.1); padding: 14px; border-radius: 8px; border-left: 3px solid #ffd54f;">
+                    <strong style="color: #ffd54f;">Top Layer Role (tops only):</strong>
+                    <span style="color: #b0b0b0; font-size: 13px;"><br/>• Base: T-shirts, shirts, polos, tanks, henleys<br/>• Mid: Sweaters, cardigans, hoodies, sweatshirts</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tag Policy Layer -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                ⚙️ Tag Policy Layer
+            </h3>
+            <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; margin-bottom: 15px;">
+                <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                    The Policy Layer applies confidence thresholds and business rules to AI output:
+                </p>
+                <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
+                    <li><strong style="color: #fff;">Confidence Thresholds:</strong> Tags below threshold are suppressed (e.g., style_identity_auto: 0.75)</li>
+                    <li><strong style="color: #fff;">Vocabulary Validation:</strong> Only allowed tag values pass through</li>
+                    <li><strong style="color: #fff;">Category-Aware Rules:</strong> Different silhouettes for tops vs bottoms, shoe-specific fields</li>
+                    <li><strong style="color: #fff;">Default Fallbacks:</strong> Missing required tags get sensible defaults (e.g., formality → "casual")</li>
+                    <li><strong style="color: #fff;">Curation Status:</strong> Products flagged as "approved", "needs_review", or "needs_fix"</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- AI Formality vs Scraped Formality -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                📊 AI Formality vs Rule-Based Formality
+            </h3>
+            <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 10px; margin-bottom: 15px;">
+                <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                    The system now generates <strong style="color: #81c784;">AI formality</strong> (in ReFitd Canonical Tags)
+                    alongside the original <strong style="color: #ffb74d;">rule-based formality</strong> (in the Formality section above)
+                    so you can compare approaches:
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div style="background: rgba(129, 199, 132, 0.15); padding: 15px; border-radius: 8px; border: 1px solid #81c784;">
+                        <strong style="color: #81c784;">🤖 AI Formality</strong>
+                        <p style="color: #b0b0b0; font-size: 12px; margin-top: 8px;">GPT-4o analyzes the image and assigns formality based on visual appearance and product context. Uses confidence scoring.</p>
+                    </div>
+                    <div style="background: rgba(255, 183, 77, 0.15); padding: 15px; border-radius: 8px; border: 1px solid #ffb74d;">
+                        <strong style="color: #ffb74d;">📐 Rule-Based Formality</strong>
+                        <p style="color: #b0b0b0; font-size: 12px; margin-top: 8px;">Calculated from garment type, color, material, and structure using predefined formality modifiers. Deterministic scoring.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Legacy Moondream Model -->
+        <div style="margin-bottom: 25px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                📦 Legacy AI Model: Moondream (Local)
+            </h3>
+            <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 10px;">
+                For offline/local use, the legacy tagging system uses <strong style="color: #fff;">Moondream</strong>, a lightweight
+                vision-language model running through <strong style="color: #fff;">Ollama</strong>. This generates unstructured style tags
+                (displayed in teal) rather than canonical tags.
+            </p>
+            <ul style="line-height: 1.8; color: #b0b0b0; padding-left: 20px;">
+                <li><strong style="color: #fff;">Privacy-First:</strong> Runs entirely on your local machine</li>
+                <li><strong style="color: #fff;">No API Costs:</strong> No per-request charges or rate limits</li>
+                <li><strong style="color: #fff;">Vocabulary Filtered:</strong> Output filtered against curated vocabulary whitelist</li>
+            </ul>
+        </div>
+
+        <!-- Product Categories -->
+        <div style="margin-bottom: 15px;">
+            <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
+                📂 Product Category Structure
+            </h3>
+            <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
+                Products are organized into hierarchical categories with subcategories:
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+                <div style="background: rgba(76, 175, 80, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #4caf50;">
+                    <strong style="color: #4caf50;">👕 Base Layer:</strong>
+                    <span style="color: #b0b0b0; font-size: 12px; display: block; margin-top: 4px;">T-Shirts, Long Sleeve, Shirts, Polos, Tanks & Henleys</span>
+                </div>
+                <div style="background: rgba(33, 150, 243, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #2196f3;">
+                    <strong style="color: #2196f3;">🧶 Mid Layer:</strong>
+                    <span style="color: #b0b0b0; font-size: 12px; display: block; margin-top: 4px;">Sweaters, Cardigans, Hoodies, Sweatshirts</span>
+                </div>
+                <div style="background: rgba(156, 39, 176, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #9c27b0;">
+                    <strong style="color: #9c27b0;">👖 Bottoms:</strong>
+                    <span style="color: #b0b0b0; font-size: 12px; display: block; margin-top: 4px;">Pants, Shorts</span>
+                </div>
+                <div style="background: rgba(255, 152, 0, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #ff9800;">
+                    <strong style="color: #ff9800;">🧥 Outerwear:</strong>
+                    <span style="color: #b0b0b0; font-size: 12px; display: block; margin-top: 4px;">Jackets, Coats, Blazers, Vests</span>
+                </div>
+                <div style="background: rgba(121, 85, 72, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #795548;">
+                    <strong style="color: #795548;">👞 Shoes:</strong>
+                    <span style="color: #b0b0b0; font-size: 12px; display: block; margin-top: 4px;">Sneakers, Boots, Loafers, Derbies, Oxfords, Sandals</span>
                 </div>
             </div>
         </div>
@@ -4313,10 +4883,10 @@ HTML_TEMPLATE = """
         <!-- Vocabulary Manager -->
         <div style="margin-bottom: 25px;">
             <h3 style="color: #64b5f6; font-size: 18px; margin-bottom: 12px;">
-                🛠️ Vocabulary Manager
+                🛠️ Vocabulary Manager (Legacy)
             </h3>
             <p style="line-height: 1.7; color: #b0b0b0; margin-bottom: 15px;">
-                Extend the AI vocabulary by adding new tags to existing categories or creating entirely new categories.
+                Extend the legacy AI vocabulary by adding new tags to existing categories or creating entirely new categories.
                 Custom vocabulary is stored in Supabase and merged with the default tags.
             </p>
 
@@ -4424,7 +4994,10 @@ HTML_TEMPLATE = """
         <!-- Technical Stack Footer -->
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); text-align: center;">
             <p style="color: #666; font-size: 13px;">
-                <strong>Tech Stack:</strong> Ollama (local inference) • Moondream (vision model) • Supabase (storage) • Python/Flask (backend)
+                <strong>Tech Stack:</strong> GPT-4o (canonical tagging) • Ollama + Moondream (legacy) • Supabase (storage) • Python/Flask (backend)
+            </p>
+            <p style="color: #555; font-size: 11px; margin-top: 8px;">
+                Policy Version: tag_policy_v2.3 • Formality: AI-generated with rule-based comparison
             </p>
         </div>
     </div>
@@ -4622,6 +5195,153 @@ def reset_product_metadata(product_id):
             }
         )
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# CANONICAL TAGS CURATION API
+# ============================================
+
+
+@app.route("/api/canonical_tags/<product_id>", methods=["GET"])
+def get_canonical_tags(product_id):
+    """Get the current canonical tags for a product."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    try:
+        result = (
+            supabase_client.table("products")
+            .select("tags_final, curation_status_refitd, tag_policy_version")
+            .eq("product_id", product_id)
+            .execute()
+        )
+        if result.data:
+            return jsonify(result.data[0])
+        return jsonify({"error": "Product not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/canonical_tags/<product_id>", methods=["PUT"])
+def update_canonical_tags(product_id):
+    """Update canonical tags for a product (full replacement of tags_final)."""
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json()
+    tags_final = data.get("tags_final")
+    curator = data.get("curator")
+
+    if tags_final is None:
+        return jsonify({"error": "Missing tags_final"}), 400
+
+    try:
+        result = (
+            supabase_client.table("products")
+            .update(
+                {
+                    "tags_final": tags_final,
+                    "curation_status_refitd": "approved" if curator else "needs_review",
+                }
+            )
+            .eq("product_id", product_id)
+            .execute()
+        )
+        return jsonify({"success": True, "data": result.data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/canonical_tags/<product_id>/field", methods=["PATCH"])
+def patch_canonical_tag_field(product_id):
+    """Add or remove a value from a specific canonical tag field.
+
+    This is more granular than full replacement - it modifies one field at a time.
+    For array fields (style_identity, context, etc.), you can add/remove items.
+    For single-value fields (silhouette, pattern), you replace the value.
+    """
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    data = request.get_json()
+    field_name = data.get("field_name")  # e.g., "style_identity", "silhouette"
+    action = data.get("action")  # "add", "remove", or "set"
+    value = data.get("value")  # The tag value to add/remove/set
+    curator = data.get("curator")
+
+    if not all([field_name, action, curator]) or value is None:
+        return (
+            jsonify(
+                {
+                    "error": "Missing required fields (field_name, action, value, curator)"
+                }
+            ),
+            400,
+        )
+
+    # Array fields vs single-value fields
+    array_fields = ["style_identity", "context", "construction_details", "pairing_tags"]
+    single_fields = [
+        "silhouette",
+        "pattern",
+        "formality",
+        "shoe_type",
+        "profile",
+        "closure",
+        "top_layer_role",
+    ]
+
+    try:
+        # First, get current tags_final
+        result = (
+            supabase_client.table("products")
+            .select("tags_final")
+            .eq("product_id", product_id)
+            .execute()
+        )
+
+        if not result.data:
+            return jsonify({"error": "Product not found"}), 404
+
+        tags_final = result.data[0].get("tags_final") or {}
+
+        # Apply the modification
+        if field_name in array_fields:
+            current_list = tags_final.get(field_name, []) or []
+            if action == "add":
+                if value not in current_list:
+                    current_list.append(value)
+            elif action == "remove":
+                current_list = [v for v in current_list if v != value]
+            elif action == "set":
+                current_list = value if isinstance(value, list) else [value]
+            tags_final[field_name] = current_list
+        elif field_name in single_fields:
+            if action == "remove" or value == "":
+                tags_final[field_name] = None
+            else:
+                tags_final[field_name] = value
+        else:
+            return jsonify({"error": f"Unknown field: {field_name}"}), 400
+
+        # Save back to database
+        update_result = (
+            supabase_client.table("products")
+            .update(
+                {
+                    "tags_final": tags_final,
+                    "curation_status_refitd": "approved",
+                }
+            )
+            .eq("product_id", product_id)
+            .execute()
+        )
+
+        return jsonify(
+            {"success": True, "tags_final": tags_final, "data": update_result.data}
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

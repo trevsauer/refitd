@@ -121,6 +121,10 @@ class ZaraPipeline:
             console.print("\n[bold blue]═══ LOAD PHASE ═══[/bold blue]")
             saved_paths = await self._load(self.transformed_products, self.raw_products)
 
+            # AI TAGGING PHASE - Generate ReFitd canonical tags
+            console.print("\n[bold blue]═══ AI TAGGING PHASE ═══[/bold blue]")
+            await self._generate_refitd_tags(self.transformed_products)
+
             # Generate and save summary
             await self.loader.save_summary(self.transformed_products)
 
@@ -313,6 +317,168 @@ class ZaraPipeline:
             saved_paths = [Path(f"supabase://{p.product_id}") for p in products]
 
         return saved_paths
+
+    async def _generate_refitd_tags(self, products: list[ProductMetadata]) -> None:
+        """
+        AI Tagging phase: Generate ReFitd canonical tags for all scraped products.
+
+        Uses GPT-4o vision to analyze product images and generate structured tags
+        following the ReFitd Item Tagging Specification.
+        """
+        import json
+        import os
+
+        if not self.use_supabase or not self.supabase_loader:
+            console.print("[yellow]Skipping AI tagging - Supabase not enabled[/yellow]")
+            return
+
+        try:
+            from src.ai.refitd_tagger import ReFitdTagger
+            from src.ai.tag_policy import apply_tag_policy
+        except ImportError as e:
+            console.print(
+                f"[yellow]Skipping AI tagging - ReFitdTagger not available: {e}[/yellow]"
+            )
+            return
+
+        supabase_url = os.getenv("SUPABASE_URL")
+        bucket_name = "product-images"
+
+        if not supabase_url:
+            console.print("[yellow]Skipping AI tagging - SUPABASE_URL not set[/yellow]")
+            return
+
+        # Category mapping from Zara to ReFitd categories
+        category_mapping = {
+            "tshirts": "top_base",
+            "shirts": "top_base",
+            "polos": "top_base",
+            "sweaters": "top_mid",
+            "sweatshirts": "top_mid",
+            "cardigans": "top_mid",
+            "trousers": "bottom",
+            "jeans": "bottom",
+            "shorts": "bottom",
+            "jackets": "outerwear",
+            "blazers": "outerwear",
+            "coats": "outerwear",
+            "suits": "outerwear",
+            "shoes": "shoes",
+        }
+
+        console.print(
+            f"[cyan]Generating ReFitd canonical tags for {len(products)} products...[/cyan]"
+        )
+
+        try:
+            async with ReFitdTagger() as tagger:
+                tagged_count = 0
+
+                for product in products:
+                    product_id = product.product_id
+
+                    # Get the image paths from the database (they were just saved)
+                    try:
+                        result = (
+                            self.supabase_loader.client.table("products")
+                            .select("image_paths")
+                            .eq("product_id", product_id)
+                            .execute()
+                        )
+                        if not result.data or not result.data[0].get("image_paths"):
+                            console.print(
+                                f"  [yellow]No images found for {product_id}[/yellow]"
+                            )
+                            continue
+
+                        image_paths = result.data[0]["image_paths"]
+                        image_url = f"{supabase_url}/storage/v1/object/public/{bucket_name}/{image_paths[0]}"
+                    except Exception as e:
+                        console.print(
+                            f"  [red]Error getting image path for {product_id}: {e}[/red]"
+                        )
+                        continue
+
+                    # Map category
+                    original_category = product.category.lower()
+                    refitd_category = category_mapping.get(
+                        original_category, "top_base"
+                    )
+
+                    console.print(f"  [dim]Tagging: {product.name[:40]}...[/dim]")
+
+                    # Generate AI sensor output
+                    ai_output = await tagger.tag_product(
+                        image_url=image_url,
+                        title=product.name,
+                        category=refitd_category,
+                        description=product.description or "",
+                        brand="Zara",
+                    )
+
+                    if not ai_output:
+                        console.print(f"    [yellow]No AI output generated[/yellow]")
+                        continue
+
+                    # Apply policy to get canonical tags
+                    policy_result = apply_tag_policy(ai_output)
+
+                    # Save to database
+                    try:
+                        update_data = {
+                            "tags_ai_raw": json.dumps(ai_output),
+                            "tags_final": policy_result.tags_final.to_dict(),
+                            "curation_status_refitd": policy_result.curation_status,
+                            "tag_policy_version": policy_result.tag_policy_version,
+                        }
+
+                        self.supabase_loader.client.table("products").update(
+                            update_data
+                        ).eq("product_id", product_id).execute()
+
+                        tagged_count += 1
+                        status_icon = {
+                            "approved": "[green]✓[/green]",
+                            "needs_review": "[yellow]⚠[/yellow]",
+                            "needs_fix": "[red]✗[/red]",
+                        }.get(policy_result.curation_status, "?")
+
+                        style_str = (
+                            ", ".join(policy_result.tags_final.style_identity)
+                            if policy_result.tags_final.style_identity
+                            else "none"
+                        )
+
+                        # Build layer info for tops
+                        layer_str = ""
+                        if policy_result.tags_final.top_layer_role:
+                            layer_str = (
+                                f" | Layer: {policy_result.tags_final.top_layer_role}"
+                            )
+
+                        # Build formality info
+                        formality_str = ""
+                        if policy_result.tags_final.formality:
+                            formality_str = (
+                                f" | Formality: {policy_result.tags_final.formality}"
+                            )
+
+                        console.print(
+                            f"    {status_icon} Style: {style_str}{layer_str}{formality_str}"
+                        )
+
+                    except Exception as e:
+                        console.print(f"    [red]Error saving tags: {e}[/red]")
+
+                console.print(
+                    f"[green]✓ Generated ReFitd tags for {tagged_count}/{len(products)} products[/green]"
+                )
+
+        except Exception as e:
+            console.print(f"[red]AI Tagging failed: {e}[/red]")
+            import traceback
+
+            traceback.print_exc()
 
     def _print_header(self):
         """Print pipeline header."""

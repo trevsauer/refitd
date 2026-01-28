@@ -12,6 +12,7 @@ Usage:
 """
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -96,6 +97,7 @@ EXAMPLES
     python main.py --headless false         Watch the browser scrape
     python main.py --no-images              Skip image downloads (faster)
     python main.py -n 1 -c tshirts          Quick test: 1 product
+    python main.py --sample-all             1 product from EACH category (test all)
 
   Storage Options:
     python main.py --no-supabase            Local files only (no cloud)
@@ -188,6 +190,12 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
         "-a",
         action="store_true",
         help="Scrape ALL products (overrides --products)",
+    )
+
+    scrape_group.add_argument(
+        "--sample-all",
+        action="store_true",
+        help="Scrape 1 product from EACH category (quick test of all categories)",
     )
 
     scrape_group.add_argument(
@@ -319,6 +327,19 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
         help="Generate tags for a specific product by ID",
     )
 
+    ai_group.add_argument(
+        "--refitd-tags",
+        action="store_true",
+        help="Generate ReFitd canonical tags (structured with confidence scores)",
+    )
+
+    ai_group.add_argument(
+        "--refitd-tag-product",
+        type=str,
+        metavar="ID",
+        help="Generate ReFitd canonical tags for a specific product by ID",
+    )
+
     return parser.parse_args()
 
 
@@ -381,10 +402,12 @@ async def ai_generate_tags():
     console.print("\n[bold cyan]Generating Style Tags[/bold cyan]\n")
 
     try:
-        from src.ai import OllamaClient, StyleTagger
+        from src.ai import StyleTagger
         from src.loaders.supabase_loader import SupabaseLoader
 
         loader = SupabaseLoader()
+        supabase_url = os.getenv("SUPABASE_URL")
+        bucket_name = "product-images"
 
         # Get products without tags
         response = loader.client.table("products").select("*").execute()
@@ -403,15 +426,18 @@ async def ai_generate_tags():
             f"[cyan]Found {len(products_to_tag)} products without tags[/cyan]"
         )
 
-        async with OllamaClient() as client:
-            if not await client.is_available():
-                console.print(
-                    "[red]Ollama is not running. Start with: ollama serve[/red]"
+        # Transform products to use Supabase storage URLs instead of original URLs
+        for product in products_to_tag:
+            image_paths = product.get("image_paths", [])
+            if image_paths and supabase_url:
+                # Use Supabase storage URL (publicly accessible)
+                product["image_url"] = (
+                    f"{supabase_url}/storage/v1/object/public/{bucket_name}/{image_paths[0]}"
                 )
-                return 1
+            else:
+                product["image_url"] = None
 
-            tagger = StyleTagger(ollama_client=client)
-
+        async with StyleTagger() as tagger:
             results = await tagger.generate_tags_batch(products_to_tag)
 
             # Save tags to database
@@ -442,7 +468,7 @@ async def ai_generate_embeddings():
     console.print("\n[bold cyan]Generating Search Embeddings[/bold cyan]\n")
 
     try:
-        from src.ai import EmbeddingsService, OllamaClient
+        from src.ai import EmbeddingsService
         from src.loaders.supabase_loader import SupabaseLoader
 
         loader = SupabaseLoader()
@@ -459,18 +485,9 @@ async def ai_generate_embeddings():
             f"[cyan]Generating embeddings for {len(products)} products[/cyan]"
         )
 
-        async with OllamaClient() as client:
-            if not await client.is_available():
-                console.print(
-                    "[red]Ollama is not running. Start with: ollama serve[/red]"
-                )
-                return 1
-
-            embeddings_service = EmbeddingsService(
-                supabase_client=loader.client,
-                ollama_client=client,
-            )
-
+        async with EmbeddingsService(
+            supabase_client=loader.client
+        ) as embeddings_service:
             # Generate embeddings
             embeddings = await embeddings_service.generate_all_embeddings(products)
 
@@ -511,7 +528,7 @@ async def ai_chat():
     console.print("\n[bold cyan]Starting AI Fashion Assistant[/bold cyan]\n")
 
     try:
-        from src.ai import ChatAssistant, OllamaClient
+        from src.ai import ChatAssistant
 
         # Try to connect to Supabase for product context
         supabase_client = None
@@ -526,18 +543,7 @@ async def ai_chat():
                 "[yellow]Running without product context (Supabase not available)[/yellow]"
             )
 
-        async with OllamaClient() as client:
-            if not await client.is_available():
-                console.print(
-                    "[red]Ollama is not running. Start with: ollama serve[/red]"
-                )
-                return 1
-
-            assistant = ChatAssistant(
-                supabase_client=supabase_client,
-                ollama_client=client,
-            )
-
+        async with ChatAssistant(supabase_client=supabase_client) as assistant:
             await assistant.interactive_chat()
             return 0
 
@@ -556,10 +562,12 @@ async def ai_tag_product(product_id: str):
     )
 
     try:
-        from src.ai import OllamaClient, StyleTagger
+        from src.ai import StyleTagger
         from src.loaders.supabase_loader import SupabaseLoader
 
         loader = SupabaseLoader()
+        supabase_url = os.getenv("SUPABASE_URL")
+        bucket_name = "product-images"
 
         # Get the product
         response = (
@@ -573,20 +581,15 @@ async def ai_tag_product(product_id: str):
         product = response.data[0]
         console.print(f"[cyan]Product: {product.get('name', 'Unknown')}[/cyan]")
 
-        image_url = product.get("primary_image", "")
-        if not image_url:
+        # Use Supabase storage URL for images (publicly accessible)
+        image_paths = product.get("image_paths", [])
+        if image_paths and supabase_url:
+            image_url = f"{supabase_url}/storage/v1/object/public/{bucket_name}/{image_paths[0]}"
+        else:
             console.print("[yellow]No image available for this product[/yellow]")
             return 1
 
-        async with OllamaClient() as client:
-            if not await client.is_available():
-                console.print(
-                    "[red]Ollama is not running. Start with: ollama serve[/red]"
-                )
-                return 1
-
-            tagger = StyleTagger(ollama_client=client)
-
+        async with StyleTagger() as tagger:
             console.print("[dim]Analyzing image with vision model...[/dim]")
 
             tags = await tagger.generate_tags(
@@ -616,6 +619,269 @@ async def ai_tag_product(product_id: str):
         return 1
 
 
+async def ai_generate_refitd_tags():
+    """Generate ReFitd canonical tags for all products."""
+    console.print("\n[bold cyan]Generating ReFitd Canonical Tags[/bold cyan]\n")
+
+    try:
+        import json
+
+        from src.ai import apply_tag_policy, ReFitdTagger
+        from src.loaders.supabase_loader import SupabaseLoader
+
+        loader = SupabaseLoader()
+        supabase_url = os.getenv("SUPABASE_URL")
+        bucket_name = "product-images"
+
+        # Get products without canonical tags
+        response = loader.client.table("products").select("*").execute()
+        products = response.data or []
+
+        # Filter to products without tags_final (or empty)
+        products_to_tag = [p for p in products if not p.get("tags_final")]
+
+        if not products_to_tag:
+            console.print(
+                "[yellow]All products already have ReFitd canonical tags![/yellow]"
+            )
+            return 0
+
+        console.print(f"[cyan]Found {len(products_to_tag)} products to tag[/cyan]")
+
+        # Map category names from Zara to ReFitd categories
+        category_mapping = {
+            "tshirts": "top_base",
+            "shirts": "top_base",
+            "polos": "top_base",
+            "sweaters": "top_mid",
+            "sweatshirts": "top_mid",
+            "cardigans": "top_mid",
+            "trousers": "bottom",
+            "jeans": "bottom",
+            "shorts": "bottom",
+            "jackets": "outerwear",
+            "blazers": "outerwear",
+            "coats": "outerwear",
+            "suits": "outerwear",
+            "shoes": "shoes",
+        }
+
+        # Transform products to include required fields
+        for product in products_to_tag:
+            image_paths = product.get("image_paths", [])
+            if image_paths and supabase_url:
+                product["image_url"] = (
+                    f"{supabase_url}/storage/v1/object/public/{bucket_name}/{image_paths[0]}"
+                )
+            else:
+                product["image_url"] = None
+
+            # Map category
+            original_category = product.get("category", "").lower()
+            product["refitd_category"] = category_mapping.get(
+                original_category, "top_base"
+            )
+
+        # Filter products with valid image URLs
+        products_with_images = [p for p in products_to_tag if p.get("image_url")]
+        console.print(f"[cyan]{len(products_with_images)} products have images[/cyan]")
+
+        async with ReFitdTagger() as tagger:
+            saved = 0
+            for product in products_with_images:
+                product_id = product.get("id") or product.get("product_id", "")
+                name = product.get("name", "")
+
+                console.print(f"\n[cyan]Tagging: {name[:50]}...[/cyan]")
+
+                # Generate AI sensor output
+                ai_output = await tagger.tag_product(
+                    image_url=product["image_url"],
+                    title=name,
+                    category=product["refitd_category"],
+                    description=product.get("description", ""),
+                    brand="Zara",
+                )
+
+                if not ai_output:
+                    console.print(f"  [yellow]No AI output for {product_id}[/yellow]")
+                    continue
+
+                # Apply policy to get canonical tags
+                policy_result = apply_tag_policy(ai_output)
+
+                # Save to database
+                try:
+                    update_data = {
+                        "tags_ai_raw": json.dumps(ai_output),  # Store AI sensor output
+                        "tags_final": policy_result.tags_final.to_dict(),  # Store canonical tags
+                        "curation_status": policy_result.curation_status,
+                        "tag_policy_version": policy_result.tag_policy_version,
+                    }
+
+                    loader.client.table("products").update(update_data).eq(
+                        "id", product_id
+                    ).execute()
+
+                    saved += 1
+                    status_icon = {
+                        "approved": "[green]✓[/green]",
+                        "needs_review": "[yellow]⚠[/yellow]",
+                        "needs_fix": "[red]✗[/red]",
+                    }.get(policy_result.curation_status, "?")
+
+                    console.print(
+                        f"  {status_icon} Status: {policy_result.curation_status}"
+                    )
+                    console.print(
+                        f"  [dim]Style: {policy_result.tags_final.style_identity}[/dim]"
+                    )
+
+                except Exception as e:
+                    console.print(f"  [red]✗[/red] Error saving: {e}")
+
+            console.print(
+                f"\n[green]Generated canonical tags for {saved} products[/green]"
+            )
+            return 0
+
+    except ImportError as e:
+        console.print(f"[red]Error importing modules: {e}[/red]")
+        console.print("[dim]Make sure ReFitdTagger is properly installed[/dim]")
+        return 1
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        import traceback
+
+        traceback.print_exc()
+        return 1
+
+
+async def ai_refitd_tag_product(product_id: str):
+    """Generate ReFitd canonical tags for a specific product."""
+    console.print(
+        f"\n[bold cyan]Generating ReFitd Canonical Tags for: {product_id}[/bold cyan]\n"
+    )
+
+    try:
+        import json
+
+        from src.ai import apply_tag_policy, ReFitdTagger
+        from src.loaders.supabase_loader import SupabaseLoader
+
+        loader = SupabaseLoader()
+        supabase_url = os.getenv("SUPABASE_URL")
+        bucket_name = "product-images"
+
+        # Get the product
+        response = (
+            loader.client.table("products").select("*").eq("id", product_id).execute()
+        )
+
+        if not response.data:
+            console.print(f"[red]Product {product_id} not found[/red]")
+            return 1
+
+        product = response.data[0]
+        console.print(f"[cyan]Product: {product.get('name', 'Unknown')}[/cyan]")
+        console.print(f"[dim]Category: {product.get('category', 'Unknown')}[/dim]")
+
+        # Get image URL
+        image_paths = product.get("image_paths", [])
+        if image_paths and supabase_url:
+            image_url = f"{supabase_url}/storage/v1/object/public/{bucket_name}/{image_paths[0]}"
+        else:
+            console.print("[yellow]No image available for this product[/yellow]")
+            return 1
+
+        # Map category
+        category_mapping = {
+            "tshirts": "top_base",
+            "shirts": "top_base",
+            "polos": "top_base",
+            "sweaters": "top_mid",
+            "sweatshirts": "top_mid",
+            "trousers": "bottom",
+            "jeans": "bottom",
+            "shorts": "bottom",
+            "jackets": "outerwear",
+            "blazers": "outerwear",
+            "coats": "outerwear",
+            "shoes": "shoes",
+        }
+        original_category = product.get("category", "").lower()
+        refitd_category = category_mapping.get(original_category, "top_base")
+
+        async with ReFitdTagger() as tagger:
+            console.print("[dim]Analyzing image with GPT-4o vision...[/dim]")
+
+            # Generate AI sensor output
+            ai_output = await tagger.tag_product(
+                image_url=image_url,
+                title=product.get("name", ""),
+                category=refitd_category,
+                description=product.get("description", ""),
+                brand="Zara",
+            )
+
+            if not ai_output:
+                console.print("[red]Failed to generate AI tags[/red]")
+                return 1
+
+            console.print("\n[bold]AI Sensor Output (with confidence):[/bold]")
+            console.print_json(json.dumps(ai_output, indent=2))
+
+            # Apply policy
+            policy_result = apply_tag_policy(ai_output)
+
+            console.print(f"\n[bold]Policy Result:[/bold]")
+            console.print(f"Status: {policy_result.curation_status}")
+            console.print(f"Reasons: {policy_result.curation_reasons}")
+
+            console.print("\n[bold]Canonical Tags (for generator):[/bold]")
+            console.print_json(json.dumps(policy_result.tags_final.to_dict(), indent=2))
+
+            if policy_result.suppressed_tags:
+                console.print("\n[yellow]Suppressed tags:[/yellow]")
+                for s in policy_result.suppressed_tags:
+                    console.print(
+                        f"  - {s.field}: {s.tag} ({s.confidence:.2f}) - {s.reason}"
+                    )
+
+            if policy_result.defaults_applied:
+                console.print("\n[yellow]Defaults applied:[/yellow]")
+                for d in policy_result.defaults_applied:
+                    console.print(f"  - {d.field}: {d.value} - {d.reason}")
+
+            # Save to database
+            try:
+                update_data = {
+                    "tags_ai_raw": json.dumps(ai_output),
+                    "tags_final": policy_result.tags_final.to_dict(),
+                    "curation_status": policy_result.curation_status,
+                    "tag_policy_version": policy_result.tag_policy_version,
+                }
+
+                loader.client.table("products").update(update_data).eq(
+                    "id", product_id
+                ).execute()
+                console.print("\n[green]✓ Tags saved to database[/green]")
+            except Exception as e:
+                console.print(f"\n[yellow]Could not save tags: {e}[/yellow]")
+
+            return 0
+
+    except ImportError as e:
+        console.print(f"[red]Error importing modules: {e}[/red]")
+        return 1
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        import traceback
+
+        traceback.print_exc()
+        return 1
+
+
 def create_config(args) -> PipelineConfig:
     """Create pipeline configuration from arguments."""
     # Build category dict based on selected categories
@@ -626,7 +892,13 @@ def create_config(args) -> PipelineConfig:
     }
 
     # Handle --all flag: use a very high number to effectively scrape all products
-    products_per_category = 9999 if args.all else args.products
+    # Handle --sample-all: scrape 1 product from each category
+    if args.all:
+        products_per_category = 9999
+    elif args.sample_all:
+        products_per_category = 1
+    else:
+        products_per_category = args.products
 
     scraper_config = ScraperConfig(
         products_per_category=products_per_category,
@@ -689,6 +961,12 @@ def main():
 
     if args.tag_product:
         return asyncio.run(ai_tag_product(args.tag_product))
+
+    if args.refitd_tags:
+        return asyncio.run(ai_generate_refitd_tags())
+
+    if args.refitd_tag_product:
+        return asyncio.run(ai_refitd_tag_product(args.refitd_tag_product))
 
     # Handle --stats flag: show tracking stats and exit
     if args.stats:
