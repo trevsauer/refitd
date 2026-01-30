@@ -4778,7 +4778,8 @@ HTML_TEMPLATE = """
                     if (!exists) {
                         const option = document.createElement('option');
                         option.value = category;
-                        option.textContent = category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        // Capitalize first letter of each word
+                        option.textContent = category.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                         dropdown.appendChild(option);
                     }
                 }
@@ -6862,36 +6863,56 @@ if __name__ == "__main__":
     args = parse_args()
     USE_SUPABASE = args.supabase
 
-    print("\n" + "=" * 50)
-    print("  ZARA PRODUCT VIEWER")
-    print("=" * 50)
+    # ANSI color codes for terminal styling
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+    GREEN = "\033[32m"
+    CYAN = "\033[36m"
+    YELLOW = "\033[33m"
+    RED = "\033[31m"
+    BLUE = "\033[34m"
+    UNDERLINE = "\033[4m"
+
+    print()
+    print(f"{BOLD}╔══════════════════════════════════════════════════════╗{RESET}")
+    print(f"{BOLD}║            🛍️  ZARA PRODUCT VIEWER  🛍️              ║{RESET}")
+    print(f"{BOLD}╚══════════════════════════════════════════════════════╝{RESET}")
 
     if USE_SUPABASE:
-        print("\n📦 Data source: Supabase Database")
+        print(f"\n{DIM}Data Source:{RESET} Supabase Database")
         try:
             init_supabase()
-            print("✓ Connected to Supabase")
+            print(f"{GREEN}✓ Connected{RESET}")
         except Exception as e:
-            print(f"✗ Failed to connect to Supabase: {e}")
-            print("\nFalling back to local files...")
+            print(f"{RED}✗ Connection failed: {e}{RESET}")
+            print(f"{YELLOW}  Falling back to local files...{RESET}")
             USE_SUPABASE = False
 
     if not USE_SUPABASE:
-        print(f"\n📁 Data source: Local files")
-        print(f"   Directory: {DATA_DIR}")
+        print(f"\n{DIM}Data Source:{RESET} Local Files")
+        print(f"{DIM}Directory:{RESET}   {DATA_DIR}")
 
     products = get_all_products()
-    print(f"\n📊 Products found: {len(products)}")
+    print(f"\n{DIM}Products:{RESET}    {BOLD}{len(products)}{RESET} items loaded")
 
-    if products:
-        print("\nProducts loaded:")
-        for p in products[:10]:  # Show first 10
-            print(f"  • {p.get('name', 'Unknown')} ({p.get('product_id', 'N/A')})")
-        if len(products) > 10:
-            print(f"  ... and {len(products) - 10} more")
+    if products and len(products) > 0:
+        print(f"\n{DIM}Sample products:{RESET}")
+        for p in products[:5]:  # Show first 5 only
+            name = p.get('name', 'Unknown')
+            if len(name) > 40:
+                name = name[:37] + "..."
+            print(f"  {DIM}•{RESET} {name}")
+        if len(products) > 5:
+            print(f"  {DIM}  ... and {len(products) - 5} more{RESET}")
 
-    print("\n" + "-" * 50)
-    print(f"  Open http://localhost:{args.port} in your browser")
-    print("-" * 50 + "\n")
+    print()
+    print(f"{BOLD}╔══════════════════════════════════════════════════════╗{RESET}")
+    print(f"{BOLD}║                                                      ║{RESET}")
+    print(f"{BOLD}║   🌐  {UNDERLINE}{CYAN}http://localhost:{args.port}{RESET}{BOLD}                         ║{RESET}")
+    print(f"{BOLD}║                                                      ║{RESET}")
+    print(f"{BOLD}╚══════════════════════════════════════════════════════╝{RESET}")
+    print(f"{DIM}Press CTRL+C to stop the server{RESET}")
+    print()
 
     app.run(debug=True, port=args.port)
