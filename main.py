@@ -26,49 +26,38 @@ from src.pipeline import ZaraPipeline
 console = Console()
 
 # Available categories with descriptions
+# NOTE: These are legacy URLs - actual URLs come from config/settings.py
 AVAILABLE_CATEGORIES = {
-    # Base Layer (Tops)
-    "tshirts": {
-        "url": "/us/en/man-tshirts-l855.html",
-        "desc": "T-Shirts & casual tops",
-    },
-    "shirts": {
-        "url": "/us/en/man-shirts-l737.html",
-        "desc": "Dress shirts & button-ups",
-    },
-    "polos": {
-        "url": "/us/en/man-polos-l845.html",
-        "desc": "Polo shirts",
-    },
-    # Mid Layer (Tops)
-    "knitwear": {
-        "url": "/us/en/man-knitwear-l820.html",
-        "desc": "Sweaters, cardigans & knits",
-    },
-    "sweatshirts": {
-        "url": "/us/en/man-sweatshirts-l821.html",
-        "desc": "Sweatshirts & hoodies",
-    },
-    # Bottoms
-    "trousers": {
-        "url": "/us/en/man-trousers-l838.html",
-        "desc": "Trousers & dress pants",
-    },
-    "jeans": {"url": "/us/en/man-jeans-l659.html", "desc": "Jeans & denim"},
-    "shorts": {"url": "/us/en/man-shorts-l722.html", "desc": "Shorts & bermudas"},
     # Outerwear
-    "jackets": {"url": "/us/en/man-jackets-l715.html", "desc": "Jackets & outerwear"},
-    "coats": {"url": "/us/en/man-coats-l1102.html", "desc": "Coats & parkas"},
+    "jackets": {"url": "/us/en/man-jackets-l640.html", "desc": "Jackets & down jackets"},
+    "outerwear": {"url": "/us/en/man-outerwear-l715.html", "desc": "All outerwear"},
+    "leather": {"url": "/us/en/man-leather-l704.html", "desc": "Leather jackets & coats"},
     "blazers": {"url": "/us/en/man-blazers-l608.html", "desc": "Blazers & sport coats"},
-    "waistcoats": {
-        "url": "/us/en/man-waistcoats-l1723.html",
-        "desc": "Vests & waistcoats",
-    },
-    "suits": {"url": "/us/en/man-suits-l599.html", "desc": "Suits & formal wear"},
+    "suits": {"url": "/us/en/man-suits-l808.html", "desc": "Suits & formal wear"},
+    "overshirts": {"url": "/us/en/man-overshirts-l3174.html", "desc": "Overshirts & shackets"},
+    # Mid Layer
+    "sweaters": {"url": "/us/en/man-knitwear-l681.html", "desc": "Sweaters & knitwear"},
+    "quarter-zip": {"url": "/us/en/man-half-zip-tops-l16485.html", "desc": "Quarter-zip tops"},
+    "hoodies": {"url": "/us/en/man-sweatshirts-l821.html", "desc": "Hoodies & sweatshirts"},
+    # Base Layer
+    "tshirts": {"url": "/us/en/man-tshirts-l855.html", "desc": "T-shirts & tank tops"},
+    "shirts": {"url": "/us/en/man-shirts-l737.html", "desc": "Dress shirts & button-ups"},
+    "polo-shirts": {"url": "/us/en/man-polos-l733.html", "desc": "Polo shirts"},
+    # Bottoms
+    "trousers": {"url": "/us/en/man-trousers-l838.html", "desc": "Pants & trousers"},
+    "jeans": {"url": "/us/en/man-jeans-l659.html", "desc": "Jeans & denim"},
+    "shorts": {"url": "/us/en/man-bermudas-l592.html", "desc": "Shorts & bermudas"},
+    "sweatsuits": {"url": "/us/en/man-jogging-l679.html", "desc": "Sweatsuits & joggers"},
     # Footwear
     "shoes": {"url": "/us/en/man-shoes-l769.html", "desc": "All footwear"},
+    "boots": {"url": "/us/en/man-shoes-boots-l781.html", "desc": "Boots"},
+    # Accessories
+    "bags": {"url": "/us/en/man-bags-l563.html", "desc": "Bags & backpacks"},
+    "accessories": {"url": "/us/en/man-accessories-l537.html", "desc": "Accessories"},
+    "colognes": {"url": "/us/en/man-accessories-perfumes-l551.html", "desc": "Colognes & perfumes"},
     # Discovery
-    "new-in": {"url": "/us/en/man-new-in-l716.html", "desc": "New arrivals"},
+    "new-in": {"url": "/us/en/man-new-in-l711.html", "desc": "New arrivals"},
+    "best-sellers": {"url": "/us/en/man-all-products-l7465.html", "desc": "Best sellers"},
 }
 
 
@@ -358,6 +347,37 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
         type=str,
         metavar="ID",
         help="Generate ReFitd canonical tags for a specific product by ID",
+    )
+
+    # Sample & Tag group - streamlined workflow
+    sample_group = parser.add_argument_group(
+        "Sample & Tag",
+        "Streamlined workflow: scrape one product per category and auto-tag with AI",
+    )
+
+    sample_group.add_argument(
+        "--sample",
+        action="store_true",
+        help="Sample one product from each category and generate AI tags",
+    )
+
+    sample_group.add_argument(
+        "--sample-categories",
+        type=str,
+        metavar="CATS",
+        help="Comma-separated list of categories to sample (default: all)",
+    )
+
+    sample_group.add_argument(
+        "--sample-skip-existing",
+        action="store_true",
+        help="Skip categories that already have products in the database",
+    )
+
+    sample_group.add_argument(
+        "--sample-no-tags",
+        action="store_true",
+        help="Skip AI tagging (only scrape products)",
     )
 
     return parser.parse_args()
@@ -902,6 +922,336 @@ async def ai_refitd_tag_product(product_id: str):
         return 1
 
 
+async def sample_and_tag(
+    categories: list[str] | None = None,
+    skip_existing: bool = False,
+    skip_tags: bool = False,
+    max_retries: int = 3,
+) -> int:
+    """
+    Sample one product from each category and generate AI tags.
+    
+    This is a streamlined workflow that:
+    1. Scrapes exactly one product per category
+    2. Saves to Supabase
+    3. Generates ReFitd canonical tags for each product
+    
+    Args:
+        categories: List of category keys to sample (None = all)
+        skip_existing: Skip categories that already have products
+        skip_tags: Skip AI tagging (only scrape)
+        max_retries: Max retry attempts per category
+    
+    Returns:
+        Exit code (0 = success, 1 = error)
+    """
+    import json
+    import time
+    from config.settings import config as pipeline_config
+    from src.extractors.zara_extractor import ZaraExtractor
+    from src.loaders.supabase_loader import SupabaseLoader
+    
+    # ANSI colors
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+    GREEN = "\033[32m"
+    CYAN = "\033[36m"
+    YELLOW = "\033[33m"
+    RED = "\033[31m"
+    
+    print()
+    print(f"{BOLD}╔══════════════════════════════════════════════════════╗{RESET}")
+    print(f"{BOLD}║         🛍️  SAMPLE & TAG WORKFLOW  🛍️               ║{RESET}")
+    print(f"{BOLD}╚══════════════════════════════════════════════════════╝{RESET}")
+    
+    # Get available categories from config
+    all_categories = list(pipeline_config.scraper.categories.keys())
+    
+    # Filter to requested categories
+    if categories:
+        target_categories = [c for c in categories if c in all_categories]
+        invalid = [c for c in categories if c not in all_categories]
+        if invalid:
+            print(f"{YELLOW}⚠ Unknown categories (skipping): {', '.join(invalid)}{RESET}")
+    else:
+        target_categories = all_categories
+    
+    print(f"\n{DIM}Categories:{RESET} {len(target_categories)}")
+    print(f"{DIM}Skip existing:{RESET} {skip_existing}")
+    print(f"{DIM}AI tagging:{RESET} {'Disabled' if skip_tags else 'Enabled'}")
+    
+    # Initialize
+    loader = SupabaseLoader()
+    supabase_url = os.getenv("SUPABASE_URL")
+    bucket_name = "product-images"
+    
+    # Results tracking
+    results = {
+        "scraped": [],
+        "tagged": [],
+        "failed": [],
+        "skipped": [],
+    }
+    
+    # Category to ReFitd category mapping
+    category_mapping = {
+        "tshirts": "top_base",
+        "shirts": "top_base",
+        "polo-shirts": "top_base",
+        "sweaters": "top_mid",
+        "hoodies": "top_mid",
+        "quarter-zip": "top_mid",
+        "trousers": "bottom",
+        "jeans": "bottom",
+        "shorts": "bottom",
+        "sweatsuits": "bottom",
+        "jackets": "outerwear",
+        "outerwear": "outerwear",
+        "blazers": "outerwear",
+        "suits": "outerwear",
+        "leather": "outerwear",
+        "overshirts": "outerwear",
+        "shoes": "shoes",
+        "boots": "shoes",
+        "bags": "accessory",
+        "accessories": "accessory",
+        "colognes": "accessory",
+    }
+    
+    print(f"\n{BOLD}Starting scraping...{RESET}\n")
+    
+    try:
+        # Start browser for scraping
+        scraper_config = pipeline_config.scraper
+        scraper_config.products_per_category = 1
+        
+        async with ZaraExtractor(scraper_config=scraper_config) as extractor:
+            for i, category in enumerate(target_categories):
+                print(f"{CYAN}[{i+1}/{len(target_categories)}] {category}{RESET}")
+                
+                # Check if category already has products (if skip_existing)
+                if skip_existing:
+                    existing = loader.client.table("products").select("id").eq("category", category).limit(1).execute()
+                    if existing.data:
+                        print(f"  {DIM}⏭ Skipped (has existing products){RESET}")
+                        results["skipped"].append(category)
+                        continue
+                
+                # Scrape one product from this category
+                start_time = time.time()
+                product = None
+                
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        # Get product URLs
+                        urls = await extractor.get_category_product_urls(category, limit=5)
+                        
+                        if not urls:
+                            print(f"  {YELLOW}No products found{RESET}")
+                            break
+                        
+                        # Try to extract a product
+                        for url in urls[:3]:  # Try up to 3 URLs
+                            try:
+                                products = await extractor.extract_products_by_color(url, category)
+                                if products:
+                                    product = products[0]
+                                    break
+                            except Exception:
+                                continue
+                        
+                        if product:
+                            break
+                            
+                    except Exception as e:
+                        if attempt < max_retries:
+                            print(f"  {DIM}Retry {attempt}/{max_retries}...{RESET}")
+                            await asyncio.sleep(2 ** attempt)
+                        else:
+                            print(f"  {RED}✗ Failed: {str(e)[:50]}{RESET}")
+                
+                if not product:
+                    results["failed"].append(category)
+                    continue
+                
+                # Save to Supabase
+                try:
+                    saved_product = await save_product_to_supabase(loader, product, bucket_name)
+                    duration = time.time() - start_time
+                    print(f"  {GREEN}✓ {product.name[:45]}...{RESET} ({duration:.1f}s)")
+                    results["scraped"].append({
+                        "category": category,
+                        "product_id": saved_product["id"],
+                        "name": product.name,
+                    })
+                except Exception as e:
+                    print(f"  {RED}✗ Save failed: {str(e)[:50]}{RESET}")
+                    results["failed"].append(category)
+    
+    except Exception as e:
+        print(f"\n{RED}Error during scraping: {e}{RESET}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
+    # AI Tagging phase
+    if not skip_tags and results["scraped"]:
+        print(f"\n{BOLD}Starting AI tagging...{RESET}\n")
+        
+        try:
+            from src.ai import apply_tag_policy, ReFitdTagger
+            
+            async with ReFitdTagger() as tagger:
+                for item in results["scraped"]:
+                    product_id = item["product_id"]
+                    category = item["category"]
+                    name = item["name"]
+                    
+                    print(f"{CYAN}Tagging: {name[:45]}...{RESET}")
+                    
+                    try:
+                        # Get product from database
+                        response = loader.client.table("products").select("*").eq("id", product_id).single().execute()
+                        product = response.data
+                        
+                        if not product:
+                            print(f"  {YELLOW}Product not found in database{RESET}")
+                            continue
+                        
+                        # Get image URL
+                        image_paths = product.get("image_paths", [])
+                        if image_paths and supabase_url:
+                            image_url = f"{supabase_url}/storage/v1/object/public/{bucket_name}/{image_paths[0]}"
+                        else:
+                            print(f"  {YELLOW}No image available{RESET}")
+                            continue
+                        
+                        # Map category
+                        refitd_category = category_mapping.get(category, "top_base")
+                        
+                        # Generate AI tags
+                        ai_output = await tagger.tag_product(
+                            image_url=image_url,
+                            title=product.get("name", ""),
+                            category=refitd_category,
+                            description=product.get("description", ""),
+                            brand="Zara",
+                        )
+                        
+                        if not ai_output:
+                            print(f"  {YELLOW}AI tagging failed{RESET}")
+                            continue
+                        
+                        # Apply policy
+                        policy_result = apply_tag_policy(ai_output)
+                        
+                        # Save to database
+                        update_data = {
+                            "tags_ai_raw": json.dumps(ai_output),
+                            "tags_final": policy_result.tags_final.to_dict(),
+                            "curation_status_refitd": policy_result.curation_status,
+                            "tag_policy_version": policy_result.tag_policy_version,
+                        }
+                        
+                        loader.client.table("products").update(update_data).eq("id", product_id).execute()
+                        
+                        # Show key tags
+                        tags = policy_result.tags_final
+                        style = ", ".join(tags.style_identity[:2]) if tags.style_identity else "—"
+                        formality = tags.formality or "—"
+                        print(f"  {GREEN}✓ Style: {style} | Formality: {formality}{RESET}")
+                        results["tagged"].append(product_id)
+                        
+                    except Exception as e:
+                        print(f"  {RED}✗ Error: {str(e)[:50]}{RESET}")
+                        
+        except ImportError as e:
+            print(f"{RED}Error importing AI modules: {e}{RESET}")
+        except Exception as e:
+            print(f"{RED}Error during tagging: {e}{RESET}")
+            import traceback
+            traceback.print_exc()
+    
+    # Summary
+    print()
+    print(f"{BOLD}╔══════════════════════════════════════════════════════╗{RESET}")
+    print(f"{BOLD}║                    📊 SUMMARY                        ║{RESET}")
+    print(f"{BOLD}╚══════════════════════════════════════════════════════╝{RESET}")
+    print(f"\n  {GREEN}✓ Scraped:{RESET}  {len(results['scraped'])} products")
+    print(f"  {GREEN}✓ Tagged:{RESET}   {len(results['tagged'])} products")
+    print(f"  {YELLOW}⏭ Skipped:{RESET}  {len(results['skipped'])} categories")
+    print(f"  {RED}✗ Failed:{RESET}   {len(results['failed'])} categories")
+    
+    if results["failed"]:
+        print(f"\n  {DIM}Failed categories: {', '.join(results['failed'])}{RESET}")
+    
+    print()
+    return 0 if not results["failed"] else 1
+
+
+async def save_product_to_supabase(loader, product, bucket_name: str) -> dict:
+    """Save a scraped product to Supabase with images."""
+    import aiohttp
+    from datetime import datetime
+    
+    supabase_url = os.getenv("SUPABASE_URL")
+    
+    # Download and upload images
+    image_paths = []
+    if product.image_urls and supabase_url:
+        async with aiohttp.ClientSession() as session:
+            for i, img_url in enumerate(product.image_urls[:5]):  # Max 5 images
+                try:
+                    async with session.get(img_url) as response:
+                        if response.status == 200:
+                            image_data = await response.read()
+                            
+                            # Generate path
+                            ext = "jpg"
+                            if ".png" in img_url.lower():
+                                ext = "png"
+                            path = f"{product.category}/{product.product_id}/{i}.{ext}"
+                            
+                            # Upload to Supabase storage
+                            loader.client.storage.from_(bucket_name).upload(
+                                path,
+                                image_data,
+                                {"content-type": f"image/{ext}", "upsert": "true"}
+                            )
+                            image_paths.append(path)
+                except Exception:
+                    continue
+    
+    # Prepare product data
+    product_data = {
+        "product_id": product.product_id,
+        "name": product.name,
+        "url": product.url,
+        "category": product.category,
+        "price_current": product.price_current,
+        "price_original": product.price_original,
+        "currency": product.currency or "USD",
+        "description": product.description,
+        "colors": product.colors or [],
+        "color": product.color,
+        "sizes": product.sizes or [],
+        "materials": product.materials or [],
+        "composition": product.composition,
+        "image_paths": image_paths,
+        "scraped_at": product.scraped_at or datetime.utcnow().isoformat() + "Z",
+        "brand": "zara",
+    }
+    
+    # Upsert to database
+    response = loader.client.table("products").upsert(
+        product_data,
+        on_conflict="product_id"
+    ).execute()
+    
+    return response.data[0] if response.data else product_data
+
+
 def create_config(args) -> PipelineConfig:
     """Create pipeline configuration from arguments."""
     # Build category dict based on selected categories
@@ -987,6 +1337,17 @@ def main():
 
     if args.refitd_tag_product:
         return asyncio.run(ai_refitd_tag_product(args.refitd_tag_product))
+
+    # Handle --sample flag: sample one product from each category and tag
+    if args.sample:
+        categories = None
+        if args.sample_categories:
+            categories = [c.strip() for c in args.sample_categories.split(",")]
+        return asyncio.run(sample_and_tag(
+            categories=categories,
+            skip_existing=args.sample_skip_existing,
+            skip_tags=args.sample_no_tags,
+        ))
 
     # Handle --stats flag: show tracking stats and exit
     if args.stats:

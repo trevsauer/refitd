@@ -6899,7 +6899,7 @@ if __name__ == "__main__":
     if products and len(products) > 0:
         print(f"\n{DIM}Sample products:{RESET}")
         for p in products[:5]:  # Show first 5 only
-            name = p.get('name', 'Unknown')
+            name = p.get("name", "Unknown")
             if len(name) > 40:
                 name = name[:37] + "..."
             print(f"  {DIM}•{RESET} {name}")
@@ -6909,7 +6909,9 @@ if __name__ == "__main__":
     print()
     print(f"{BOLD}╔══════════════════════════════════════════════════════╗{RESET}")
     print(f"{BOLD}║                                                      ║{RESET}")
-    print(f"{BOLD}║   🌐  {UNDERLINE}{CYAN}http://localhost:{args.port}{RESET}{BOLD}                         ║{RESET}")
+    print(
+        f"{BOLD}║   🌐  {UNDERLINE}{CYAN}http://localhost:{args.port}{RESET}{BOLD}                         ║{RESET}"
+    )
     print(f"{BOLD}║                                                      ║{RESET}")
     print(f"{BOLD}╚══════════════════════════════════════════════════════╝{RESET}")
     print(f"{DIM}Press CTRL+C to stop the server{RESET}")
