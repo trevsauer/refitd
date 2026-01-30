@@ -108,7 +108,7 @@ class StorageConfig:
     # Image settings
     download_images: bool = True
     image_format: str = "jpg"
-    max_images_per_product: int = 5  # Limit to primary images
+    max_images_per_product: int = 0  # 0 = unlimited images
 
     @property
     def output_dir(self) -> Path:

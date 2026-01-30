@@ -752,11 +752,11 @@ class ZaraExtractor:
                                     else:
                                         img_url += "?w=850"
                                     images.append(img_url)
-                                elif media.get("path") and media.get("name"):
+                            elif media.get("path") and media.get("name"):
                                     # Fallback: Build the image URL from path/name
                                     img_url = f"https://static.zara.net/photos/{media['path']}/{media['name']}.jpg?w=850"
                                     images.append(img_url)
-                            result["images"] = images[:5]  # Limit to 5 images
+                            result["images"] = images  # All images
 
                         # Get price from first color's first size
                         if "sizes" in first_color and first_color["sizes"]:
@@ -1543,7 +1543,11 @@ class ZaraExtractor:
             except:
                 pass
 
-        return image_urls[: config.storage.max_images_per_product]
+        # Apply limit if configured (0 = unlimited)
+        max_images = config.storage.max_images_per_product
+        if max_images > 0:
+            return image_urls[:max_images]
+        return image_urls
 
     async def extract_all_products(self) -> list[RawProductData]:
         """

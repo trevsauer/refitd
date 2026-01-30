@@ -116,9 +116,13 @@ class FileLoader:
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
 
+        # Apply limit if configured (0 = unlimited)
+        max_images = self.config.max_images_per_product
+        images_to_download = image_urls if max_images == 0 else image_urls[:max_images]
+
         connector = aiohttp.TCPConnector(ssl=ssl_context)
         async with aiohttp.ClientSession(connector=connector) as session:
-            for i, url in enumerate(image_urls[: self.config.max_images_per_product]):
+            for i, url in enumerate(images_to_download):
                 # Generate filename
                 extension = self.config.image_format
                 # Try to get extension from URL
