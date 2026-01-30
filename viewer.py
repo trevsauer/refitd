@@ -131,6 +131,9 @@ def get_products_from_supabase():
                     "composition": p.get(
                         "composition"
                     ),  # Fabric composition (e.g., "100% cotton")
+                    "composition_structured": p.get(
+                        "composition_structured"
+                    ),  # Hierarchical composition data
                     "images": image_paths,  # Store full paths for Supabase
                     "image_urls": [
                         f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{path}"
@@ -2413,15 +2416,53 @@ HTML_TEMPLATE = """
             const materialTags = (product.materials || []).map(m => `<span class="tag">${m}</span>`).join('');
 
             // Parse composition for better display
-            // Shoe compositions have format like: "UPPER37% polyurethane32% polyesterLINING100% polyester..."
-            // Part names can be concatenated directly after material names
+            // Prefer structured composition data if available, otherwise parse the string
             let compositionHtml = '';
-            if (product.composition) {
+
+            if (product.composition_structured && product.composition_structured.parts) {
+                // Use structured composition data - hierarchical display
+                const parts = product.composition_structured.parts;
+                compositionHtml = parts.map(part => {
+                    const partName = part.name || '';
+                    const areasHtml = (part.areas || []).map(area => {
+                        const areaName = area.name || '';
+                        const components = (area.components || []).map(c =>
+                            `<span class="tag" style="background: #f5f5f5; color: #333; font-size: 12px;">${c.percentage} ${c.material}</span>`
+                        ).join('');
+
+                        if (areaName) {
+                            // Has sub-area name (e.g., MAIN FABRIC, SECONDARY FABRIC)
+                            return `
+                                <div style="margin-left: 12px; margin-bottom: 8px;">
+                                    <div style="font-size: 9px; font-weight: 500; color: #888; margin-bottom: 4px; text-transform: uppercase;">${areaName}</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 6px;">${components}</div>
+                                </div>
+                            `;
+                        } else {
+                            // Direct components under the part
+                            return `
+                                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-left: 12px;">${components}</div>
+                            `;
+                        }
+                    }).join('');
+
+                    if (partName) {
+                        return `
+                            <div style="margin-bottom: 16px;">
+                                <div style="font-size: 10px; font-weight: 600; color: #666; margin-bottom: 6px; text-transform: uppercase;">${partName}</div>
+                                ${areasHtml}
+                            </div>
+                        `;
+                    } else {
+                        return areasHtml;
+                    }
+                }).join('');
+            } else if (product.composition) {
                 const comp = product.composition;
 
                 // Check if this is a complex shoe-style composition with part names
                 // Sort by length descending to match longer parts first (OUTSOLE before SOLE, etc.)
-                const partNames = ['OUTSOLE', 'MIDSOLE', 'INSOLE', 'FOOTBED', 'COUNTER', 'TONGUE', 'LINING', 'UPPER', 'OUTER', 'INNER', 'SOLE', 'HEEL', 'TOE'];
+                const partNames = ['OUTSOLE', 'MIDSOLE', 'INSOLE', 'FOOTBED', 'COUNTER', 'TONGUE', 'LINING', 'UPPER', 'OUTER', 'INNER', 'SOLE', 'HEEL', 'TOE', 'MAIN FABRIC', 'SECONDARY FABRIC', 'OUTER SHELL'];
 
                 // Find all part matches with their positions
                 let partMatches = [];

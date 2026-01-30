@@ -298,6 +298,9 @@ class ZaraPipeline:
                         formality=formality_dict,
                         image_urls=raw.image_urls,
                         composition=raw.composition,
+                        composition_structured=getattr(
+                            raw, "composition_structured", None
+                        ),
                     )
                 except Exception as e:
                     console.print(

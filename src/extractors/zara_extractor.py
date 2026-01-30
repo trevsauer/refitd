@@ -52,8 +52,9 @@ class RawProductData:
     image_urls: list = field(default_factory=list)
     fit: Optional[str] = None  # slim, relaxed, wide, regular, etc.
     weight: Optional[str] = None  # light, medium, heavy
-    composition: Optional[str] = (
-        None  # e.g., "100% cotton" or "49% polyamide, 29% polyester, 14% acrylic, 8% wool"
+    composition: Optional[str] = None  # e.g., "100% cotton" - legacy string format
+    composition_structured: Optional[dict] = (
+        None  # Hierarchical composition data: {"parts": [{"name": "OUTER SHELL", "areas": [...]}]}
     )
     scraped_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
 
@@ -520,8 +521,10 @@ class ZaraExtractor:
             # Extract materials/composition
             materials = await self._extract_materials(page)
 
-            # Extract composition (fabric percentage breakdown)
-            composition = await self._extract_composition(page, product_id)
+            # Extract composition (fabric percentage breakdown) - returns (string, structured)
+            composition, composition_structured = await self._extract_composition(
+                page, product_id
+            )
 
             # Extract image URLs - try API first, then DOM
             image_urls = []
@@ -550,6 +553,7 @@ class ZaraExtractor:
                 materials=materials,
                 image_urls=image_urls,
                 composition=composition,
+                composition_structured=composition_structured,
             )
 
             console.print(f"[green]✓ Extracted: {name} ({product_id})[/green]")
@@ -602,7 +606,9 @@ class ZaraExtractor:
 
             # Get shared data from DOM (materials, composition, fit)
             materials = await self._extract_materials(page)
-            composition = await self._extract_composition(page, base_product_id)
+            composition, composition_structured = await self._extract_composition(
+                page, base_product_id
+            )
 
             # Extract name (shared across all variants)
             name = api_data.get("name", "")
@@ -666,6 +672,7 @@ class ZaraExtractor:
                     materials=materials,
                     image_urls=variant_images,
                     composition=composition,
+                    composition_structured=composition_structured,
                 )
 
                 products.append(product_data)
@@ -1145,7 +1152,9 @@ class ZaraExtractor:
         except:
             return []
 
-    async def _extract_composition(self, page: Page, product_id: str) -> Optional[str]:
+    async def _extract_composition(
+        self, page: Page, product_id: str
+    ) -> tuple[Optional[str], Optional[dict]]:
         """
         Extract composition/material information from the product page.
 
@@ -1157,9 +1166,23 @@ class ZaraExtractor:
             product_id: Product ID for API fallback
 
         Returns:
-            Composition string or None if not found
+            Tuple of (legacy string composition, structured composition dict)
+            Structured format: {
+                "parts": [
+                    {
+                        "name": "OUTER SHELL" or "UPPER" etc,
+                        "areas": [
+                            {
+                                "name": "MAIN FABRIC" (optional),
+                                "components": [{"material": "cotton", "percentage": "82%"}, ...]
+                            }
+                        ]
+                    }
+                ]
+            }
         """
-        composition = None
+        composition_string = None
+        composition_structured = None
 
         # First, try to get composition from the API
         try:
@@ -1186,26 +1209,104 @@ class ZaraExtractor:
                         if "detailedComposition" in detail:
                             detailed_comp = detail["detailedComposition"]
                             if detailed_comp and isinstance(detailed_comp, dict):
-                                # Structure: {parts: [{components: [{material, percentage}]}]}
+                                # Parse the structured composition
+                                structured_parts = []
+                                flat_components = []
+
                                 parts = detailed_comp.get("parts", [])
-                                comp_parts = []
                                 for part in parts:
                                     if isinstance(part, dict):
+                                        part_name = part.get("description", "")
+                                        areas = part.get("areas", [])
                                         components = part.get("components", [])
-                                        for comp in components:
-                                            if isinstance(comp, dict):
-                                                material = comp.get("material", "")
-                                                percentage = comp.get("percentage", "")
-                                                if material and percentage:
-                                                    comp_parts.append(
-                                                        f"{percentage} {material}"
+
+                                        structured_part = {
+                                            "name": part_name,
+                                            "areas": [],
+                                        }
+
+                                        # Handle areas (sub-sections like "MAIN FABRIC", "SECONDARY FABRIC")
+                                        if areas:
+                                            for area in areas:
+                                                if isinstance(area, dict):
+                                                    area_name = area.get(
+                                                        "description", ""
                                                     )
-                                if comp_parts:
-                                    composition = ", ".join(comp_parts)
+                                                    area_components = area.get(
+                                                        "components", []
+                                                    )
+
+                                                    area_data = {
+                                                        "name": area_name,
+                                                        "components": [],
+                                                    }
+
+                                                    for comp in area_components:
+                                                        if isinstance(comp, dict):
+                                                            material = comp.get(
+                                                                "material", ""
+                                                            )
+                                                            percentage = comp.get(
+                                                                "percentage", ""
+                                                            )
+                                                            if material and percentage:
+                                                                area_data[
+                                                                    "components"
+                                                                ].append(
+                                                                    {
+                                                                        "material": material,
+                                                                        "percentage": percentage,
+                                                                    }
+                                                                )
+                                                                flat_components.append(
+                                                                    f"{percentage} {material}"
+                                                                )
+
+                                                    if area_data["components"]:
+                                                        structured_part["areas"].append(
+                                                            area_data
+                                                        )
+
+                                        # Handle direct components (no sub-areas)
+                                        if components:
+                                            direct_area = {
+                                                "name": "",  # No sub-area name
+                                                "components": [],
+                                            }
+                                            for comp in components:
+                                                if isinstance(comp, dict):
+                                                    material = comp.get("material", "")
+                                                    percentage = comp.get(
+                                                        "percentage", ""
+                                                    )
+                                                    if material and percentage:
+                                                        direct_area[
+                                                            "components"
+                                                        ].append(
+                                                            {
+                                                                "material": material,
+                                                                "percentage": percentage,
+                                                            }
+                                                        )
+                                                        flat_components.append(
+                                                            f"{percentage} {material}"
+                                                        )
+
+                                            if direct_area["components"]:
+                                                structured_part["areas"].append(
+                                                    direct_area
+                                                )
+
+                                        if structured_part["areas"]:
+                                            structured_parts.append(structured_part)
+
+                                if structured_parts:
+                                    composition_structured = {"parts": structured_parts}
+                                    composition_string = ", ".join(flat_components)
                                     console.print(
-                                        f"[dim]Got composition from API detailedComposition: {composition}[/dim]"
+                                        f"[dim]Got structured composition from API: {len(structured_parts)} part(s)[/dim]"
                                     )
-                                    return composition
+                                    return composition_string, composition_structured
 
                     # Look for composition in colors array
                     if "detail" in data and "colors" in data["detail"]:
@@ -1236,17 +1337,17 @@ class ZaraExtractor:
                                         elif isinstance(mat, str):
                                             comp_parts.append(mat)
                                     if comp_parts:
-                                        composition = ", ".join(comp_parts)
+                                        composition_string = ", ".join(comp_parts)
                                         console.print(
-                                            f"[dim]Got composition from API rawMaterials: {composition}[/dim]"
+                                            f"[dim]Got composition from API rawMaterials: {composition_string}[/dim]"
                                         )
-                                        return composition
+                                        return composition_string, None
                                 elif isinstance(raw_materials, str):
-                                    composition = raw_materials
+                                    composition_string = raw_materials
                                     console.print(
-                                        f"[dim]Got composition from API rawMaterials: {composition}[/dim]"
+                                        f"[dim]Got composition from API rawMaterials: {composition_string}[/dim]"
                                     )
-                                    return composition
+                                    return composition_string, None
 
                             # Try composition field directly
                             if "composition" in first_color:
@@ -1255,7 +1356,7 @@ class ZaraExtractor:
                                     console.print(
                                         f"[dim]Got composition from API composition field: {comp}[/dim]"
                                     )
-                                    return comp
+                                    return comp, None
 
                             # Try materials field
                             if "materials" in first_color:
@@ -1281,11 +1382,11 @@ class ZaraExtractor:
                                         elif isinstance(mat, str):
                                             comp_parts.append(mat)
                                     if comp_parts:
-                                        composition = ", ".join(comp_parts)
+                                        composition_string = ", ".join(comp_parts)
                                         console.print(
-                                            f"[dim]Got composition from API materials: {composition}[/dim]"
+                                            f"[dim]Got composition from API materials: {composition_string}[/dim]"
                                         )
-                                        return composition
+                                        return composition_string, None
 
                     # Try detail.composition or detail.rawMaterials at the top level
                     if "detail" in data:
@@ -1296,14 +1397,14 @@ class ZaraExtractor:
                                 console.print(
                                     f"[dim]Got composition from API detail.composition: {comp}[/dim]"
                                 )
-                                return comp
+                                return comp, None
                         if "rawMaterials" in detail:
                             comp = detail["rawMaterials"]
                             if isinstance(comp, str) and comp:
                                 console.print(
                                     f"[dim]Got composition from API detail.rawMaterials: {comp}[/dim]"
                                 )
-                                return comp
+                                return comp, None
 
         except Exception as e:
             console.print(f"[dim]API composition lookup failed: {e}[/dim]")
@@ -1415,7 +1516,7 @@ class ZaraExtractor:
         except Exception as e:
             console.print(f"[dim]DOM composition extraction failed: {e}[/dim]")
 
-        return composition
+        return composition, None  # Return tuple (string, None for structured)
 
     async def _extract_images(self, page: Page) -> list[str]:
         """Extract product image URLs."""

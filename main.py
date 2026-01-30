@@ -1383,6 +1383,7 @@ async def sample_and_tag(
                         sizes=product.sizes,
                         materials=product.materials,
                         composition=product.composition,
+                        composition_structured=product.composition_structured,
                         image_urls=product.image_urls,
                     )
                     duration = time.time() - start_time

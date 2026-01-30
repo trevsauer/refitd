@@ -99,6 +99,7 @@ class SupabaseLoader:
         formality: Optional[dict] = None,
         image_urls: Optional[list[str]] = None,
         composition: Optional[str] = None,
+        composition_structured: Optional[dict] = None,
     ) -> dict:
         """
         Save a product to Supabase.
@@ -122,7 +123,8 @@ class SupabaseLoader:
             style_tags: Style tags with reasoning
             formality: Formality assessment
             image_urls: List of image URLs to download and store
-            composition: Fabric composition string (e.g., "100% cotton")
+            composition: Fabric composition string (e.g., "100% cotton") - legacy format
+            composition_structured: Hierarchical composition data with parts/areas/components
 
         Returns:
             Dict with saved product info including storage paths
@@ -164,13 +166,15 @@ class SupabaseLoader:
             "parent_product_id": parent_product_id,  # Original product ID if this is a color variant
             "sizes": sizes_simple,  # Keep simple list for backward compatibility
             "sizes_availability": sizes_availability,  # New JSONB column with availability
-            "sizes_checked_at": datetime.utcnow().isoformat() + "Z",  # When sizes were last checked
+            "sizes_checked_at": datetime.utcnow().isoformat()
+            + "Z",  # When sizes were last checked
             "materials": materials or [],
             "fit": fit,
             "weight": weight,
             "style_tags": style_tags,
             "formality": formality,
-            "composition": composition,  # Fabric composition (e.g., "100% cotton")
+            "composition": composition,  # Fabric composition string (legacy)
+            "composition_structured": composition_structured,  # Hierarchical composition data
             "image_paths": image_paths,
             "image_count": len(image_paths),
             "scraped_at": datetime.utcnow().isoformat() + "Z",

@@ -262,6 +262,7 @@ class CategorySampler:
                     materials=product.materials,
                     fit=product.fit,
                     composition=product.composition,
+                    composition_structured=product.composition_structured,
                     image_urls=product.image_urls,  # No limit - config handles it
                 )
             else:
