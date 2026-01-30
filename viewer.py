@@ -2704,7 +2704,7 @@ HTML_TEMPLATE = """
                 </div>
 
                 <div class="metadata-section">
-                    ${curatorMode ? `
+                    ${curateMode ? `
                         <div class="category-dropdown-wrapper">
                             <select class="category-dropdown" onchange="handleCategoryChange(this)">
                                 ${buildCategoryDropdownOptions(classifyProduct(product).sub || product.category)}
