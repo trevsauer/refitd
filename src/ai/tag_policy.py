@@ -74,10 +74,15 @@ TOP_LAYER_MID = [
     "sweater",
     "cardigan",
     "hoodie",
+    "hoodies",  # Zara category name
     "knit",
+    "knitwear",  # Zara category name
     "pullover",
     "sweatshirt",
     "fleece",
+    "quarter-zip",
+    "half-zip",
+    "zip-up",
 ]
 
 

@@ -2246,7 +2246,6 @@ HTML_TEMPLATE = """
             let curatedTags = [];
             let curatedFit = [];
             let curatedWeight = [];
-            let curatedFormality = [];
             let rejectedTags = [];
             let aiGeneratedTags = [];
             let curationStatus = null;
@@ -2259,7 +2258,6 @@ HTML_TEMPLATE = """
                         curatedTags = curatedData.filter(c => c.field_name === 'style_tag');
                         curatedFit = curatedData.filter(c => c.field_name === 'fit');
                         curatedWeight = curatedData.filter(c => c.field_name === 'weight');
-                        curatedFormality = curatedData.filter(c => c.field_name === 'formality');
                     }
                 } catch (error) {
                     console.error('Error fetching curated data:', error);
@@ -2413,6 +2411,102 @@ HTML_TEMPLATE = """
             }
 
             const materialTags = (product.materials || []).map(m => `<span class="tag">${m}</span>`).join('');
+
+            // Parse composition for better display
+            // Shoe compositions have format like: "UPPER37% polyurethane32% polyesterLINING100% polyester..."
+            // Part names can be concatenated directly after material names
+            let compositionHtml = '';
+            if (product.composition) {
+                const comp = product.composition;
+
+                // Check if this is a complex shoe-style composition with part names
+                // Sort by length descending to match longer parts first (OUTSOLE before SOLE, etc.)
+                const partNames = ['OUTSOLE', 'MIDSOLE', 'INSOLE', 'FOOTBED', 'COUNTER', 'TONGUE', 'LINING', 'UPPER', 'OUTER', 'INNER', 'SOLE', 'HEEL', 'TOE'];
+
+                // Find all part matches with their positions
+                let partMatches = [];
+                for (const partName of partNames) {
+                    // Match part name case-insensitively
+                    const regex = new RegExp(partName, 'gi');
+                    let match;
+                    while ((match = regex.exec(comp)) !== null) {
+                        // Check if this position overlaps with an already found (longer) part
+                        let overlaps = false;
+                        for (const existing of partMatches) {
+                            if ((match.index >= existing.start && match.index < existing.end) ||
+                                (match.index + partName.length > existing.start && match.index + partName.length <= existing.end)) {
+                                overlaps = true;
+                                break;
+                            }
+                        }
+                        if (!overlaps) {
+                            partMatches.push({
+                                name: partName.toUpperCase(),
+                                start: match.index,
+                                end: match.index + partName.length
+                            });
+                        }
+                    }
+                }
+
+                // Sort by position
+                partMatches.sort((a, b) => a.start - b.start);
+
+                const hasParts = partMatches.length > 0;
+
+                if (hasParts) {
+                    // Parse each section
+                    let sections = [];
+                    for (let i = 0; i < partMatches.length; i++) {
+                        const partName = partMatches[i].name;
+                        const startPos = partMatches[i].end;
+                        const endPos = (i + 1 < partMatches.length) ? partMatches[i + 1].start : comp.length;
+
+                        let materialsStr = comp.substring(startPos, endPos).trim();
+                        // Remove leading colon or space if present
+                        materialsStr = materialsStr.replace(/^[:\s]+/, '');
+
+                        // Parse materials: "37% polyurethane32% polyester" -> ["37% polyurethane", "32% polyester"]
+                        const materialList = materialsStr.match(/\d+%\s*[a-zA-Z][a-zA-Z\s]*?(?=\d+%|$)/g) || [];
+                        const cleanedMaterials = materialList.map(m => m.trim()).filter(m => m);
+
+                        if (cleanedMaterials.length > 0) {
+                            sections.push({
+                                part: partName,
+                                materials: cleanedMaterials
+                            });
+                        }
+                    }
+
+                    if (sections.length > 0) {
+                        compositionHtml = sections.map(section => `
+                            <div style="margin-bottom: 12px;">
+                                <div style="font-size: 10px; font-weight: 600; color: #666; margin-bottom: 6px;">${section.part}</div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                                    ${section.materials.map(m => `<span class="tag" style="background: #f5f5f5; color: #333; font-size: 12px;">${m}</span>`).join('')}
+                                </div>
+                            </div>
+                        `).join('');
+                    } else {
+                        // Fallback to simple display
+                        compositionHtml = `<p style="color: #333; font-size: 14px; font-weight: 500; margin: 0; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;">${comp}</p>`;
+                    }
+                } else {
+                    // Simple composition like "100% cotton" or "49% polyamide, 29% polyester"
+                    // Parse into individual materials for pill display
+                    const materials = comp.split(/,\s*/).map(m => m.trim()).filter(m => m);
+                    if (materials.length > 1) {
+                        compositionHtml = `
+                            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                                ${materials.map(m => `<span class="tag" style="background: #f5f5f5; color: #333; font-size: 12px;">${m}</span>`).join('')}
+                            </div>
+                        `;
+                    } else {
+                        compositionHtml = `<p style="color: #333; font-size: 14px; font-weight: 500; margin: 0; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;">${comp}</p>`;
+                    }
+                }
+            }
+
             // Build style tags with reasoning (hover to see reasoning)
             const styleTags = (product.style_tags || []).map(s => {
                 // Handle both old format (string) and new format (object with tag/reasoning)
@@ -2428,82 +2522,6 @@ HTML_TEMPLATE = """
                     <button class="tag-delete-btn" data-field="style_tag" data-value="${tagValue}" data-rejected="${isRejected}" onclick="handleTagDeleteClick(this)" title="${deleteTitle}">${deleteSymbol}</button>
                 </span>`;
             }).join('');
-
-            // Build formality display
-            let formalityHtml = '';
-
-            // Color mapping for formality levels
-            const formalityColors = {
-                1: '#ff6b6b',  // Very Casual - red
-                2: '#ffa94d',  // Casual - orange
-                3: '#ffd43b',  // Smart Casual - yellow
-                4: '#69db7c',  // Business Casual - green
-                5: '#339af0',  // Formal - blue
-            };
-
-            // Check if there's a curated formality (takes precedence)
-            let displayScore = null;
-            let displayLabel = null;
-            let displayReasoning = [];
-            let isCurated = false;
-            let curatedBy = null;
-
-            if (curatedFormality.length > 0) {
-                // Parse curated formality (format: "score|label")
-                const curatedValue = curatedFormality[0].field_value;
-                const parts = curatedValue.split('|');
-                displayScore = parseInt(parts[0]);
-                displayLabel = parts[1] || '';
-                isCurated = true;
-                curatedBy = curatedFormality[0].curator;
-            } else if (product.formality) {
-                displayScore = product.formality.score;
-                displayLabel = product.formality.label;
-                displayReasoning = product.formality.reasoning || [];
-            }
-
-            if (displayScore !== null) {
-                const barColor = formalityColors[displayScore] || '#ccc';
-                const curatorColorInfo = isCurated ? (curatorColors[curatedBy] || { bg: '#9c27b0' }) : null;
-
-                formalityHtml = `
-                    <div class="ai-section" style="margin-top: 24px; padding: 20px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-radius: 12px; border: 1px solid #e0e0e0; ${isCurated ? `border-color: ${curatorColorInfo.bg}; border-width: 2px;` : ''}">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 1px;">Formality</span>
-                                ${isCurated ? `<span style="font-size: 10px; font-weight: 500; background: ${curatorColorInfo.bg}; color: white; padding: 3px 8px; border-radius: 10px;">Curated by ${curatedBy}</span>` : ''}
-                            </div>
-                            ${isCurated ? `
-                                <button class="tag-delete-btn" onclick="handleCuratedTagDelete('formality', '${curatedFormality[0].field_value}', '${curatedBy}')" title="Delete curated formality" style="font-size: 14px; padding: 4px 8px;">×</button>
-                            ` : ''}
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 16px;">
-                            <div style="font-size: 36px; font-weight: 700; color: ${barColor}; line-height: 1;">${displayScore}</div>
-                            <div style="flex: 1;">
-                                <div style="font-size: 16px; font-weight: 600; color: #333; margin-bottom: 8px;">${displayLabel}</div>
-                                <div style="display: flex; gap: 4px;">
-                                    ${[1,2,3,4,5].map(i => `<div style="flex: 1; height: 6px; border-radius: 3px; background: ${i <= displayScore ? barColor : '#e0e0e0'}; transition: background 0.2s;"></div>`).join('')}
-                                </div>
-                            </div>
-                        </div>
-                        ${!isCurated && displayReasoning.length > 0 ? `
-                            <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid #e8e8e8; font-size: 12px; color: #888; line-height: 1.5;">
-                                ${displayReasoning.join(' · ')}
-                            </div>
-                        ` : ''}
-                        <div id="curateFormalityInput"></div>
-                    </div>
-                `;
-            } else {
-                // No formality at all - show placeholder with curation input
-                formalityHtml = `
-                    <div class="ai-section" style="margin-top: 24px; padding: 20px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-radius: 12px; border: 1px solid #e0e0e0;">
-                        <span style="font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 1px;">Formality</span>
-                        <div style="margin-top: 12px; color: #999; font-size: 13px;">Not specified</div>
-                        <div id="curateFormalityInput"></div>
-                    </div>
-                `;
-            }
 
             // Render card
             document.getElementById('productCard').innerHTML = `
@@ -2522,8 +2540,6 @@ HTML_TEMPLATE = """
                     <div class="price-section">
                         ${priceHtml}
                     </div>
-
-                    ${formalityHtml}
 
                     ${product.tags_final ? `
                         <div class="ai-section" style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-radius: 12px; border: 1px solid #e0e0e0;">
@@ -2553,30 +2569,28 @@ HTML_TEMPLATE = """
                                 </div>
                             </div>
 
-                            <!-- Top Layer Role (only for tops) -->
-                            ${product.tags_final.top_layer_role || (product.category && product.category.toLowerCase().includes('top')) ? `
-                                <div style="margin-bottom: 16px; background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%); padding: 14px 16px; border-radius: 8px; border: 1px solid #ffd54f;">
-                                    <div style="font-size: 10px; font-weight: 600; color: #f57f17; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Top Layer Role</div>
-                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
-                                        ${product.tags_final.top_layer_role ? `
-                                            <span style="display: inline-flex; align-items: center; background: ${product.tags_final.top_layer_role === 'base' ? '#4caf50' : '#2196f3'}; color: white; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; gap: 8px;">
-                                                ${product.tags_final.top_layer_role === 'base' ? '👕 Base Layer' : '🧶 Mid Layer'}
-                                                <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('top_layer_role', null)" title="Remove layer role" style="display: none; background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
-                                            </span>
-                                        ` : `<span style="color: #999; font-size: 12px;">Not set</span>`}
-                                        <div class="canonical-tag-add-input" style="display: none;">
-                                            <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px;" onchange="if(this.value){handleCanonicalTagSet('top_layer_role', this.value); this.value='';}">
-                                                <option value="">Set layer...</option>
-                                                <option value="base">👕 Base Layer</option>
-                                                <option value="mid">🧶 Mid Layer</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div style="margin-top: 8px; font-size: 11px; color: #8d6e63;">
-                                        ${product.tags_final.top_layer_role === 'base' ? 'T-shirts, shirts, polos, tanks, henleys' : product.tags_final.top_layer_role === 'mid' ? 'Sweaters, cardigans, hoodies, knit pullovers' : 'Required for tops category'}
+                            <!-- Formality (single-value field) -->
+                            <div style="margin-bottom: 16px; background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Formality</div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                    ${product.tags_final.formality ? `
+                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                            ${product.tags_final.formality}
+                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('formality', null)" title="Remove formality" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                        </span>
+                                    ` : `<span style="color: #ccc; font-size: 12px;">Not set</span>`}
+                                    <div class="canonical-tag-add-input" style="display: none;">
+                                        <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagSet('formality', this.value); this.value='';}">
+                                            <option value="">Set formality...</option>
+                                            <option value="athletic">Athletic</option>
+                                            <option value="casual">Casual</option>
+                                            <option value="smart-casual">Smart Casual</option>
+                                            <option value="business-casual">Business Casual</option>
+                                            <option value="formal">Formal</option>
+                                        </select>
                                     </div>
                                 </div>
-                            ` : ''}
+                            </div>
 
                             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
                                 <!-- Silhouette (single-value field) -->
@@ -2604,41 +2618,6 @@ HTML_TEMPLATE = """
                                     <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
                                         <input type="text" placeholder="Set pattern..." style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; width: 100%;" onkeypress="if(event.key==='Enter'){handleCanonicalTagSet('pattern', this.value); this.value='';}" />
                                     </div>
-                                </div>
-                            </div>
-
-                            <!-- AI Formality (single-value field) -->
-                            <div style="margin-top: 16px; background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); padding: 14px 16px; border-radius: 8px; border: 1px solid #81c784;">
-                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                    <div style="font-size: 10px; font-weight: 600; color: #2e7d32; text-transform: uppercase; letter-spacing: 0.5px;">AI Formality</div>
-                                    <span style="font-size: 9px; background: #4caf50; color: white; padding: 2px 6px; border-radius: 4px;">AI Generated</span>
-                                </div>
-                                ${product.tags_final.formality ? `
-                                    <div style="display: flex; align-items: center; gap: 12px;">
-                                        <span style="display: inline-flex; align-items: center; background: ${
-                                            product.tags_final.formality === 'athletic' ? '#ff6b6b' :
-                                            product.tags_final.formality === 'casual' ? '#ffa94d' :
-                                            product.tags_final.formality === 'smart-casual' ? '#ffd43b' :
-                                            product.tags_final.formality === 'business-casual' ? '#69db7c' :
-                                            product.tags_final.formality === 'formal' ? '#339af0' : '#999'
-                                        }; color: ${['athletic', 'casual'].includes(product.tags_final.formality) ? '#fff' : '#333'}; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 600; gap: 8px;">
-                                            ${product.tags_final.formality}
-                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('formality', null)" title="Remove formality" style="display: none; background: none; border: none; color: rgba(0,0,0,0.5); cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
-                                        </span>
-                                        ${product.formality ? `
-                                            <span style="font-size: 11px; color: #666;">vs scraped: <strong>${product.formality.label || 'N/A'}</strong></span>
-                                        ` : ''}
-                                    </div>
-                                ` : `<span style="color: #999; font-size: 12px;">Not set (will default to "casual")</span>`}
-                                <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
-                                    <select style="padding: 6px 10px; border: 1px dashed #66bb6a; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagSet('formality', this.value); this.value='';}">
-                                        <option value="">Set formality...</option>
-                                        <option value="athletic">1 - Athletic</option>
-                                        <option value="casual">2 - Casual</option>
-                                        <option value="smart-casual">3 - Smart Casual</option>
-                                        <option value="business-casual">4 - Business Casual</option>
-                                        <option value="formal">5 - Formal</option>
-                                    </select>
                                 </div>
                             </div>
 
@@ -2729,6 +2708,26 @@ HTML_TEMPLATE = """
                                 </div>
                             ` : ''}
 
+                            <!-- Top Layer Role (only for tops) -->
+                            ${product.tags_final.top_layer_role ? `
+                                <div style="margin-top: 12px; background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                    <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Top Layer Role</div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                            ${product.tags_final.top_layer_role === 'base' ? 'Base Layer' : 'Mid Layer'}
+                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('top_layer_role', null)" title="Remove layer role" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                        </span>
+                                        <div class="canonical-tag-add-input" style="display: none;">
+                                            <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px;" onchange="if(this.value){handleCanonicalTagSet('top_layer_role', this.value); this.value='';}">
+                                                <option value="">Set layer...</option>
+                                                <option value="base">Base Layer</option>
+                                                <option value="mid">Mid Layer</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : ''}
+
                             ${product.tag_policy_version ? `
                                 <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee; font-size: 11px; color: #bbb;">
                                     Policy: ${product.tag_policy_version}
@@ -2774,11 +2773,9 @@ HTML_TEMPLATE = """
                         ${product.composition || materialTags ? `
                             <div class="detail-card" style="background: #fafafa; border-radius: 12px; padding: 20px; border: 1px solid #eee;">
                                 <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Composition</div>
-                                ${product.composition ? `
-                                    <p style="color: #333; font-size: 14px; font-weight: 500; margin: 0; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;">${product.composition}</p>
-                                ` : ''}
-                                ${materialTags ? `
-                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: ${product.composition ? '12px' : '0'};">${materialTags}</div>
+                                ${compositionHtml}
+                                ${materialTags && !product.composition ? `
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">${materialTags}</div>
                                 ` : ''}
                             </div>
                         ` : ''}
@@ -3118,29 +3115,6 @@ HTML_TEMPLATE = """
                 `;
             }
 
-            // Formality input - dropdown for score and label
-            const formalityInputContainer = document.getElementById('curateFormalityInput');
-            if (formalityInputContainer) {
-                formalityInputContainer.innerHTML = `
-                    <div class="curate-input-wrapper" style="margin-top: 10px;">
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <select id="newFormalityScore" class="curate-input" style="width: auto; border-color: ${colorInfo.bg};">
-                                <option value="">Score...</option>
-                                <option value="1">1 - Very Casual</option>
-                                <option value="2">2 - Casual</option>
-                                <option value="3">3 - Smart Casual</option>
-                                <option value="4">4 - Business Casual</option>
-                                <option value="5">5 - Formal</option>
-                            </select>
-                            <button onclick="addCuratedFormality()"
-                                    style="background: ${colorInfo.bg}; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;">
-                                Set Formality
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }
-
             // Mark as Complete button
             const curationButtonArea = document.getElementById('curationButtonArea');
             if (curationButtonArea) {
@@ -3209,63 +3183,6 @@ HTML_TEMPLATE = """
                 }
             } catch (error) {
                 console.error('Error saving curated field:', error);
-            }
-        }
-
-        // Add curated formality with score and label
-        async function addCuratedFormality() {
-            if (!curateMode || !currentCurator) {
-                alert('Please enable Curate Mode and select a curator first');
-                return;
-            }
-
-            const scoreSelect = document.getElementById('newFormalityScore');
-            const score = scoreSelect.value;
-
-            if (!score) {
-                alert('Please select a formality score');
-                return;
-            }
-
-            // Get the label based on score
-            const formalityLabels = {
-                '1': 'Very Casual',
-                '2': 'Casual',
-                '3': 'Smart Casual',
-                '4': 'Business Casual',
-                '5': 'Formal'
-            };
-            const label = formalityLabels[score];
-
-            // Format as "score|label" for storage
-            const formattedValue = `${score}|${label}`;
-
-            const product = products[currentIndex];
-
-            // Save to database
-            try {
-                const response = await fetch('/api/curated', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        product_id: product.product_id,
-                        field_name: 'formality',
-                        field_value: formattedValue,
-                        curator: currentCurator
-                    })
-                });
-                const result = await response.json();
-                if (result.success) {
-                    console.log(`✓ Saved curated formality: "${score}/5 - ${label}" by ${currentCurator}`);
-                    // Refresh the product display to show the curated formality
-                    showProduct(currentIndex);
-                } else {
-                    console.error('Failed to save formality:', result.error);
-                    alert('Failed to save formality: ' + result.error);
-                }
-            } catch (error) {
-                console.error('Error saving curated formality:', error);
-                alert('Error saving formality');
             }
         }
 

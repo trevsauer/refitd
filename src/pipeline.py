@@ -421,7 +421,12 @@ class ZaraPipeline:
                         continue
 
                     # Apply policy to get canonical tags
-                    policy_result = apply_tag_policy(ai_output)
+                    # Pass product name and category for proper layer role detection
+                    policy_result = apply_tag_policy(
+                        ai_output,
+                        product_name=product.name,
+                        subcategory=product.category,  # Original Zara category
+                    )
 
                     # Save to database
                     try:

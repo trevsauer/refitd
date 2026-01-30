@@ -775,7 +775,12 @@ async def ai_generate_refitd_tags():
                     continue
 
                 # Apply policy to get canonical tags
-                policy_result = apply_tag_policy(ai_output)
+                # Pass product name and category for proper layer role detection
+                policy_result = apply_tag_policy(
+                    ai_output,
+                    product_name=name,
+                    subcategory=product.get("category", ""),  # Original Zara category
+                )
 
                 # Save to database
                 try:
@@ -898,8 +903,12 @@ async def ai_refitd_tag_product(product_id: str):
             console.print("\n[bold]AI Sensor Output (with confidence):[/bold]")
             console.print_json(json.dumps(ai_output, indent=2))
 
-            # Apply policy
-            policy_result = apply_tag_policy(ai_output)
+            # Apply policy with product name and category for layer role detection
+            policy_result = apply_tag_policy(
+                ai_output,
+                product_name=product.get("name", ""),
+                subcategory=original_category,  # Pass Zara category
+            )
 
             console.print(f"\n[bold]Policy Result:[/bold]")
             console.print(f"Status: {policy_result.curation_status}")
@@ -1134,11 +1143,11 @@ async def sample_and_tag(
                         image_urls=product.image_urls,
                     )
                     duration = time.time() - start_time
-                    
+
                     # Get the actual product ID from the database
                     db_record = saved_result.get("db_record")
                     db_id = db_record.get("id") if db_record else None
-                    
+
                     print(f"  {GREEN}✓ {product.name[:45]}...{RESET} ({duration:.1f}s)")
                     results["scraped"].append(
                         {
@@ -1212,11 +1221,15 @@ async def sample_and_tag(
                             print(f"  {YELLOW}AI tagging failed{RESET}")
                             continue
 
-                        # Apply policy
-                        policy_result = apply_tag_policy(ai_output)
+                        # Apply policy with product name and category for layer role detection
+                        policy_result = apply_tag_policy(
+                            ai_output,
+                            product_name=product_data.get("name", ""),
+                            subcategory=category,  # Pass Zara category (hoodies, sweaters, etc.)
+                        )
 
-                        # Save to database using the actual database id
-                        db_id = product_data.get("id")
+                        # Save to database using the product_id
+                        # Build update data with all tag columns
                         update_data = {
                             "tags_ai_raw": json.dumps(ai_output),
                             "tags_final": policy_result.tags_final.to_dict(),
@@ -1225,7 +1238,7 @@ async def sample_and_tag(
                         }
 
                         loader.client.table("products").update(update_data).eq(
-                            "id", db_id
+                            "product_id", product_id
                         ).execute()
 
                         # Show key tags
