@@ -652,6 +652,53 @@ HTML_TEMPLATE = """
             margin-bottom: 10px;
         }
 
+        .category-dropdown-wrapper {
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        .category-dropdown {
+            padding: 6px 32px 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border: 2px solid #4CAF50;
+            background: white;
+            color: #333;
+            cursor: pointer;
+            font-weight: 600;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M3 4l3 4 3-4'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+        }
+
+        .category-dropdown:hover {
+            border-color: #45a049;
+            background-color: #f9fff9;
+        }
+
+        .category-dropdown:focus {
+            outline: none;
+            border-color: #2e7d32;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.2);
+        }
+
+        .category-dropdown optgroup {
+            font-weight: 700;
+            color: #333;
+            background: #f5f5f5;
+            padding: 8px 0;
+        }
+
+        .category-dropdown option {
+            font-weight: 400;
+            color: #666;
+            padding: 8px 12px;
+        }
+
         .product-name {
             font-size: 28px;
             font-weight: 400;
@@ -1963,6 +2010,89 @@ HTML_TEMPLATE = """
             return classification.displayCategory || 'Other';
         }
 
+        // Build category dropdown options HTML for reclassification
+        function buildCategoryDropdownOptions(currentSubcategory) {
+            let html = '';
+            const orderedCategories = ['tops_base', 'tops_mid', 'bottoms', 'outerwear', 'shoes'];
+
+            for (const mainKey of orderedCategories) {
+                const mainConfig = CATEGORY_STRUCTURE[mainKey];
+                if (!mainConfig) continue;
+
+                html += `<optgroup label="${mainConfig.icon} ${mainConfig.label}">`;
+                for (const [subKey, subConfig] of Object.entries(mainConfig.subcategories)) {
+                    const selected = (subKey === currentSubcategory) ? 'selected' : '';
+                    html += `<option value="${subKey}" ${selected}>${subConfig.label}</option>`;
+                }
+                html += '</optgroup>';
+            }
+
+            // Add "Other" option
+            html += `<optgroup label="📦 Other">`;
+            html += `<option value="accessories">Accessories</option>`;
+            html += `<option value="bags">Bags</option>`;
+            html += `<option value="colognes">Colognes</option>`;
+            html += `</optgroup>`;
+
+            return html;
+        }
+
+        // Handle category reclassification
+        async function handleCategoryChange(selectElement) {
+            const newCategory = selectElement.value;
+            const product = getCurrentProduct();
+
+            if (!product) return;
+
+            // Get the display name for the new category
+            let displayName = newCategory;
+            for (const [mainKey, mainConfig] of Object.entries(CATEGORY_STRUCTURE)) {
+                if (mainConfig.subcategories[newCategory]) {
+                    displayName = mainConfig.subcategories[newCategory].label;
+                    break;
+                }
+            }
+
+            console.log(`Reclassifying product ${product.product_id} to: ${newCategory} (${displayName})`);
+
+            try {
+                // Update in Supabase
+                const response = await fetch('/api/update_product_category', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: product.product_id,
+                        new_category: newCategory
+                    })
+                });
+
+                if (response.ok) {
+                    // Update local data
+                    product.category = newCategory;
+
+                    // Show success notification
+                    showNotification(`Category changed to ${displayName}`, 'success');
+
+                    // Rebuild the sidebar to update counts
+                    buildCategorySidebar();
+                } else {
+                    const error = await response.json();
+                    showNotification(`Failed to update category: ${error.message}`, 'error');
+                }
+            } catch (err) {
+                console.error('Failed to update category:', err);
+                showNotification('Failed to update category', 'error');
+            }
+        }
+
+        // Helper to get current product
+        function getCurrentProduct() {
+            if (currentCategory === 'all') {
+                return filteredProducts[currentIndex];
+            }
+            return filteredProducts[currentIndex];
+        }
+
         // Build category sidebar from products data
         function buildCategorySidebar() {
             const categoryList = document.getElementById('categoryList');
@@ -2574,7 +2704,15 @@ HTML_TEMPLATE = """
                 </div>
 
                 <div class="metadata-section">
-                    <span class="category-badge">${getDisplayCategory(product)}</span>
+                    ${curatorMode ? `
+                        <div class="category-dropdown-wrapper">
+                            <select class="category-dropdown" onchange="handleCategoryChange(this)">
+                                ${buildCategoryDropdownOptions(classifyProduct(product).sub || product.category)}
+                            </select>
+                        </div>
+                    ` : `
+                        <span class="category-badge">${getDisplayCategory(product)}</span>
+                    `}
                     <h2 class="product-name">${product.name}</h2>
                     <p class="product-id">ID: ${product.product_id}</p>
 
@@ -5375,6 +5513,53 @@ def reset_product_metadata(product_id):
                 "status_deleted": status_deleted,
             }
         )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# PRODUCT CATEGORY UPDATE API
+# ============================================
+
+
+@app.route("/api/update_product_category", methods=["POST"])
+def update_product_category():
+    """Update a product's category for reclassification.
+
+    This allows curators to move products between subcategories.
+    For example, moving a sweater to cardigans, or a t-shirt to polos.
+    """
+    if not USE_SUPABASE or not supabase_client:
+        return jsonify({"error": "Supabase not configured"}), 400
+
+    try:
+        data = request.get_json()
+        product_id = data.get("product_id")
+        new_category = data.get("new_category")
+
+        if not product_id or not new_category:
+            return jsonify({"error": "product_id and new_category required"}), 400
+
+        # Update the product's category in Supabase
+        result = (
+            supabase_client.table("products")
+            .update({"category": new_category})
+            .eq("product_id", product_id)
+            .execute()
+        )
+
+        if result.data:
+            return jsonify(
+                {
+                    "success": True,
+                    "product_id": product_id,
+                    "new_category": new_category,
+                    "message": f"Category updated to {new_category}",
+                }
+            )
+        else:
+            return jsonify({"error": "Product not found"}), 404
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
