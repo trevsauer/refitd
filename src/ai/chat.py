@@ -24,19 +24,40 @@ Usage:
 """
 
 import asyncio
-import json
-from typing import Optional
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any, Optional, Union
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.markdown import Markdown
-
-from .ollama_client import OllamaClient, OllamaConfig
-from .embeddings import EmbeddingsService
+from rich.panel import Panel
 
 console = Console()
+
+# Import clients - prefer OpenAI, fallback to Ollama
+try:
+    from .openai_client import OpenAIClient, OpenAIConfig
+
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
+try:
+    from .ollama_client import OllamaClient, OllamaConfig
+
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+
+from .embeddings import EmbeddingsService
+
+# Type alias for either client
+AIClient = (
+    Union["OpenAIClient", "OllamaClient"]
+    if OPENAI_AVAILABLE or OLLAMA_AVAILABLE
+    else Any
+)
 
 
 SYSTEM_PROMPT = """You are a helpful fashion assistant for a men's clothing store called Refitd.
@@ -92,28 +113,47 @@ class ChatAssistant:
 
     def __init__(
         self,
-        supabase_client = None,
-        ollama_client: Optional[OllamaClient] = None,
+        supabase_client=None,
+        ai_client: Optional[AIClient] = None,
         embeddings_service: Optional[EmbeddingsService] = None,
         config: Optional[ChatConfig] = None,
+        use_openai: bool = True,
     ):
+        """
+        Initialize the ChatAssistant.
+
+        Args:
+            supabase_client: Supabase client for product data
+            ai_client: Pre-configured AI client (OpenAI or Ollama)
+            embeddings_service: Pre-configured embeddings service
+            config: Chat configuration
+            use_openai: If True, prefer OpenAI; if False, use Ollama
+        """
         self.supabase = supabase_client
-        self.client = ollama_client
+        self.client = ai_client
         self.embeddings = embeddings_service
         self.config = config or ChatConfig()
-        self._owns_client = ollama_client is None
+        self._owns_client = ai_client is None
         self._owns_embeddings = embeddings_service is None
+        self._use_openai = use_openai and OPENAI_AVAILABLE
         self._conversation_history: list[Message] = []
 
     async def __aenter__(self):
         """Async context manager entry."""
         if self._owns_client:
-            self.client = OllamaClient()
+            if self._use_openai and OPENAI_AVAILABLE:
+                self.client = OpenAIClient()
+                console.print("[green]Using OpenAI GPT-4o for chat[/green]")
+            elif OLLAMA_AVAILABLE:
+                self.client = OllamaClient()
+                console.print("[yellow]Using Ollama for chat[/yellow]")
+            else:
+                raise RuntimeError("No AI client available. Install openai or ollama.")
             await self.client.connect()
         if self._owns_embeddings and self.supabase:
             self.embeddings = EmbeddingsService(
                 supabase_client=self.supabase,
-                ollama_client=self.client,
+                ai_client=self.client,
             )
         return self
 
@@ -122,10 +162,15 @@ class ChatAssistant:
         if self._owns_client and self.client:
             await self.client.close()
 
-    def _get_client(self) -> OllamaClient:
-        """Get the Ollama client."""
+    def _get_client(self) -> AIClient:
+        """Get the AI client (OpenAI or Ollama)."""
         if self.client is None:
-            self.client = OllamaClient()
+            if self._use_openai and OPENAI_AVAILABLE:
+                self.client = OpenAIClient()
+            elif OLLAMA_AVAILABLE:
+                self.client = OllamaClient()
+            else:
+                raise RuntimeError("No AI client available. Install openai or ollama.")
             self._owns_client = True
         return self.client
 
@@ -154,7 +199,9 @@ class ChatAssistant:
                 colors = product.get("colors", [])
                 similarity = product.get("similarity", 0)
 
-                color_str = ", ".join(colors) if isinstance(colors, list) else str(colors)
+                color_str = (
+                    ", ".join(colors) if isinstance(colors, list) else str(colors)
+                )
 
                 context_parts.append(
                     f"{i}. {name} ({category}) - {price} - Colors: {color_str} "
@@ -190,7 +237,9 @@ class ChatAssistant:
             context = await self._get_product_context(question)
 
         # Build system prompt with context
-        system = SYSTEM_PROMPT.format(context=context or "No product context available.")
+        system = SYSTEM_PROMPT.format(
+            context=context or "No product context available."
+        )
 
         # Generate response
         response = await client.generate(
@@ -238,7 +287,9 @@ class ChatAssistant:
         # Build messages with system prompt
         system_message = {
             "role": "system",
-            "content": SYSTEM_PROMPT.format(context=context or "No product context available.")
+            "content": SYSTEM_PROMPT.format(
+                context=context or "No product context available."
+            ),
         }
 
         full_messages = [system_message] + messages
@@ -311,7 +362,12 @@ class ChatAssistant:
 
         # Get the reference product
         try:
-            response = self.supabase.table("products").select("*").eq("id", product_id).execute()
+            response = (
+                self.supabase.table("products")
+                .select("*")
+                .eq("id", product_id)
+                .execute()
+            )
 
             if not response.data:
                 return f"Product {product_id} not found."
@@ -344,7 +400,12 @@ class ChatAssistant:
             return "Cannot explain product without database connection."
 
         try:
-            response = self.supabase.table("products").select("*").eq("id", product_id).execute()
+            response = (
+                self.supabase.table("products")
+                .select("*")
+                .eq("id", product_id)
+                .execute()
+            )
 
             if not response.data:
                 return f"Product {product_id} not found."
@@ -389,19 +450,23 @@ Colors: {product.get('colors', [])}
         client = self._get_client()
 
         if not await client.is_available():
-            console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+            console.print(
+                "[red]AI service not available. Check your API key or Ollama server.[/red]"
+            )
             return
 
-        console.print(Panel(
-            "[bold cyan]Refitd Fashion Assistant[/bold cyan]\n\n"
-            "Ask me about:\n"
-            "• Outfit recommendations\n"
-            "• Styling advice\n"
-            "• Product details\n"
-            "• What to wear for occasions\n\n"
-            "[dim]Type 'quit' to exit, 'clear' to reset, 'history' to see chat[/dim]",
-            title="Welcome",
-        ))
+        console.print(
+            Panel(
+                "[bold cyan]Refitd Fashion Assistant[/bold cyan]\n\n"
+                "Ask me about:\n"
+                "• Outfit recommendations\n"
+                "• Styling advice\n"
+                "• Product details\n"
+                "• What to wear for occasions\n\n"
+                "[dim]Type 'quit' to exit, 'clear' to reset, 'history' to see chat[/dim]",
+                title="Welcome",
+            )
+        )
 
         messages = []
 
@@ -427,7 +492,11 @@ Colors: {product.get('colors', [])}
                         console.print("[dim]No history yet.[/dim]")
                     else:
                         for msg in messages:
-                            role = "[cyan]You[/cyan]" if msg["role"] == "user" else "[green]Assistant[/green]"
+                            role = (
+                                "[cyan]You[/cyan]"
+                                if msg["role"] == "user"
+                                else "[green]Assistant[/green]"
+                            )
                             console.print(f"{role}: {msg['content'][:100]}...")
                     continue
 
@@ -452,13 +521,17 @@ Colors: {product.get('colors', [])}
 
 async def test_chat():
     """Test the chat assistant."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     console.print("\n[bold cyan]Testing Chat Assistant[/bold cyan]\n")
 
     async with ChatAssistant() as assistant:
-        # Check Ollama
+        # Check AI service
         client = assistant._get_client()
         if not await client.is_available():
-            console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+            console.print("[red]AI service not available. Check your API key.[/red]")
             return
 
         # Test single question
@@ -468,7 +541,7 @@ async def test_chat():
             include_context=False,  # No Supabase in test
         )
 
-        console.print(f"\n[green]Response:[/green]")
+        console.print("\n[green]Response:[/green]")
         console.print(Markdown(response))
 
         # Test outfit recommendation
@@ -479,7 +552,7 @@ async def test_chat():
             season="summer",
         )
 
-        console.print(f"\n[green]Response:[/green]")
+        console.print("\n[green]Response:[/green]")
         console.print(Markdown(response))
 
         # Show history

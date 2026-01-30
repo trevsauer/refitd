@@ -1,8 +1,8 @@
 """
 Style Tagger - Vision-based style tag generation
 
-Uses a vision model to analyze clothing product images and generate
-relevant style tags for categorization and search.
+Uses a vision model (OpenAI GPT-4o or Ollama) to analyze clothing product images
+and generate relevant style tags for categorization and search.
 
 Usage:
     from src.ai import StyleTagger
@@ -14,16 +14,37 @@ Usage:
 
 import asyncio
 import json
+import os
 import re
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any, Optional, Union
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from .ollama_client import OllamaClient, OllamaConfig
-
 console = Console()
+
+# Import clients - prefer OpenAI, fallback to Ollama
+try:
+    from .openai_client import OpenAIClient, OpenAIConfig
+
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
+try:
+    from .ollama_client import OllamaClient, OllamaConfig
+
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+
+# Type alias for either client
+AIClient = (
+    Union["OpenAIClient", "OllamaClient"]
+    if OPENAI_AVAILABLE or OLLAMA_AVAILABLE
+    else Any
+)
 
 
 # Predefined style vocabulary for consistent tagging
@@ -242,7 +263,7 @@ class StyleTagger:
     """
     Vision-based style tag generator for clothing products.
 
-    Uses Moondream (or other vision model) to analyze product images
+    Uses OpenAI GPT-4o (preferred) or Ollama Moondream to analyze product images
     and generate relevant style tags for categorization and search.
 
     The tagger validates generated tags against a vocabulary that combines:
@@ -252,14 +273,25 @@ class StyleTagger:
 
     def __init__(
         self,
-        ollama_client: Optional[OllamaClient] = None,
+        ai_client: Optional[AIClient] = None,
         config: Optional[TaggingConfig] = None,
         supabase_client: Any = None,
+        use_openai: bool = True,
     ):
-        self.client = ollama_client
+        """
+        Initialize the StyleTagger.
+
+        Args:
+            ai_client: Pre-configured AI client (OpenAI or Ollama)
+            config: Tagging configuration
+            supabase_client: Supabase client for custom vocabulary
+            use_openai: If True, prefer OpenAI; if False, use Ollama
+        """
+        self.client = ai_client
         self.config = config or TaggingConfig()
-        self._owns_client = ollama_client is None
+        self._owns_client = ai_client is None
         self.supabase_client = supabase_client
+        self._use_openai = use_openai and OPENAI_AVAILABLE
 
         # Load merged vocabulary (built-in + custom)
         self._style_categories, self._valid_tags = get_merged_vocabulary(
@@ -269,7 +301,14 @@ class StyleTagger:
     async def __aenter__(self):
         """Async context manager entry."""
         if self._owns_client:
-            self.client = OllamaClient()
+            if self._use_openai and OPENAI_AVAILABLE:
+                self.client = OpenAIClient()
+                console.print("[green]Using OpenAI GPT-4o for style tagging[/green]")
+            elif OLLAMA_AVAILABLE:
+                self.client = OllamaClient()
+                console.print("[yellow]Using Ollama for style tagging[/yellow]")
+            else:
+                raise RuntimeError("No AI client available. Install openai or ollama.")
             await self.client.connect()
         return self
 
@@ -278,10 +317,15 @@ class StyleTagger:
         if self._owns_client and self.client:
             await self.client.close()
 
-    def _get_client(self) -> OllamaClient:
-        """Get the Ollama client."""
+    def _get_client(self) -> AIClient:
+        """Get the AI client (OpenAI or Ollama)."""
         if self.client is None:
-            self.client = OllamaClient()
+            if self._use_openai and OPENAI_AVAILABLE:
+                self.client = OpenAIClient()
+            elif OLLAMA_AVAILABLE:
+                self.client = OllamaClient()
+            else:
+                raise RuntimeError("No AI client available. Install openai or ollama.")
             self._owns_client = True
         return self.client
 
@@ -513,6 +557,10 @@ class StyleTagger:
 
 async def test_tagger():
     """Test the style tagger."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     console.print("\n[bold cyan]Testing Style Tagger[/bold cyan]\n")
 
     # Test with a sample Zara product image
@@ -520,10 +568,10 @@ async def test_tagger():
     test_name = "RELAXED FIT LINEN BLEND SHIRT"
 
     async with StyleTagger() as tagger:
-        # Check if Ollama is available
+        # Check if AI service is available
         client = tagger._get_client()
         if not await client.is_available():
-            console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+            console.print("[red]AI service not available. Check your API key.[/red]")
             return
 
         console.print(f"[cyan]Analyzing: {test_name}[/cyan]")

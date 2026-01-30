@@ -180,6 +180,12 @@ class ZaraExtractor:
         base_url = f"{self.config.base_url}{category_path}"
         console.print(f"[cyan]Fetching category: {category_key} from {base_url}[/cyan]")
 
+        # Extract expected category ID from URL for redirect validation
+        # URL format: /us/en/man-category-l###.html
+        expected_category_id = None
+        if "-l" in category_path:
+            expected_category_id = category_path.split("-l")[-1].replace(".html", "")
+
         all_product_links = {}  # Use dict: product_id -> url to avoid duplicates
         current_page = 1
         max_pages = 20  # Safety limit
@@ -198,6 +204,21 @@ class ZaraExtractor:
                     url, wait_until="networkidle", timeout=self.config.timeout_ms
                 )
                 await self._random_delay()
+
+                # Check for redirects - Zara reuses category IDs across sections
+                final_url = page.url
+                if (
+                    expected_category_id
+                    and f"-l{expected_category_id}" not in final_url
+                ):
+                    console.print(f"[bold yellow]⚠ Redirect detected![/bold yellow]")
+                    console.print(f"[yellow]  Expected: {base_url}[/yellow]")
+                    console.print(f"[yellow]  Got: {final_url}[/yellow]")
+                    console.print(
+                        f"[yellow]  Category URL may be outdated. Skipping to avoid wrong products.[/yellow]"
+                    )
+                    await page.close()
+                    return []  # Return empty to indicate category needs URL update
 
                 # Extract product URLs from viewPayload (Zara's internal data structure)
                 # This is more reliable than DOM extraction due to virtual rendering
@@ -695,8 +716,11 @@ class ZaraExtractor:
                 # Extract name
                 result["name"] = data.get("name", "")
 
-                # Extract description
-                if "detail" in data:
+                # Extract description - now in seo.description instead of detail
+                if "seo" in data and data["seo"].get("description"):
+                    result["description"] = data["seo"]["description"]
+                elif "detail" in data:
+                    # Fallback to old location
                     desc_parts = []
                     for key in ["description", "longDescription"]:
                         if data["detail"].get(key):
@@ -789,8 +813,11 @@ class ZaraExtractor:
                     "color_variants": [],
                 }
 
-                # Extract description
-                if "detail" in data:
+                # Extract description - now in seo.description instead of detail
+                if "seo" in data and data["seo"].get("description"):
+                    result["description"] = data["seo"]["description"]
+                elif "detail" in data:
+                    # Fallback to old location
                     desc_parts = []
                     for key in ["description", "longDescription"]:
                         if data["detail"].get(key):

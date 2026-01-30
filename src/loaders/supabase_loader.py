@@ -164,6 +164,7 @@ class SupabaseLoader:
             "parent_product_id": parent_product_id,  # Original product ID if this is a color variant
             "sizes": sizes_simple,  # Keep simple list for backward compatibility
             "sizes_availability": sizes_availability,  # New JSONB column with availability
+            "sizes_checked_at": datetime.utcnow().isoformat() + "Z",  # When sizes were last checked
             "materials": materials or [],
             "fit": fit,
             "weight": weight,

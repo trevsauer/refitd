@@ -17,24 +17,54 @@ class ScraperConfig:
     language: str = "en"
 
     # Category URLs for Men's clothing
+    # VERIFIED 2026-01-29 from Zara website navigation
+    # NOTE: Zara reuses category IDs (l###) across sections, so URLs must be exact
     categories: dict = field(
         default_factory=lambda: {
-            # Clothing
-            "tshirts": "/us/en/man-tshirts-l855.html",
-            "shirts": "/us/en/man-shirts-l737.html",
-            "trousers": "/us/en/man-trousers-l838.html",
-            "jeans": "/us/en/man-jeans-l659.html",
-            "shorts": "/us/en/man-shorts-l722.html",
-            "jackets": "/us/en/man-jackets-l715.html",
-            "blazers": "/us/en/man-blazers-l608.html",
-            "suits": "/us/en/man-suits-l599.html",
-            # Footwear & Accessories
-            "shoes": "/us/en/man-shoes-l769.html",
-            "bags": "/us/en/man-bags-l563.html",
-            "accessories": "/us/en/man-accessories-l537.html",
-            "underwear": "/us/en/man-underwear-l789.html",
-            # Discovery
-            "new-in": "/us/en/man-new-in-l716.html",
+            # ===========================================
+            # OUTERWEAR
+            # ===========================================
+            "jackets": "/us/en/man-jackets-l640.html",  # Jackets | Down Jackets
+            "outerwear": "/us/en/man-outerwear-l715.html",  # All Outerwear (parent category)
+            "leather": "/us/en/man-leather-l704.html",  # Leather
+            "blazers": "/us/en/man-blazers-l608.html",  # Blazers
+            "suits": "/us/en/man-suits-l808.html",  # Suits
+            "overshirts": "/us/en/man-overshirts-l3174.html",  # Overshirts
+            # ===========================================
+            # MID LAYER (Knitwear & Sweatshirts)
+            # ===========================================
+            "sweaters": "/us/en/man-knitwear-l681.html",  # Sweaters / Knitwear
+            "quarter-zip": "/us/en/man-half-zip-tops-l16485.html",  # Quarter Zip
+            "hoodies": "/us/en/man-sweatshirts-l821.html",  # Hoodies | Sweatshirts
+            # ===========================================
+            # BASE LAYER (Tops)
+            # ===========================================
+            "tshirts": "/us/en/man-tshirts-l855.html",  # T-Shirts | Tank Tops
+            "shirts": "/us/en/man-shirts-l737.html",  # Shirts
+            "polo-shirts": "/us/en/man-polos-l733.html",  # Polo Shirts
+            # ===========================================
+            # BOTTOMS
+            # ===========================================
+            "trousers": "/us/en/man-trousers-l838.html",  # Pants
+            "jeans": "/us/en/man-jeans-l659.html",  # Jeans
+            "shorts": "/us/en/man-bermudas-l592.html",  # Shorts / Bermudas
+            "sweatsuits": "/us/en/man-jogging-l679.html",  # Sweatsuits / Jogging
+            # ===========================================
+            # FOOTWEAR
+            # ===========================================
+            "shoes": "/us/en/man-shoes-l769.html",  # Shoes (all)
+            "boots": "/us/en/man-shoes-boots-l781.html",  # Boots
+            # ===========================================
+            # ACCESSORIES & OTHER
+            # ===========================================
+            "bags": "/us/en/man-bags-l563.html",  # Bags | Backpacks
+            "accessories": "/us/en/man-accessories-l537.html",  # Accessories
+            "colognes": "/us/en/man-accessories-perfumes-l551.html",  # Colognes / Perfumes
+            # ===========================================
+            # DISCOVERY
+            # ===========================================
+            "new-in": "/us/en/man-new-in-l711.html",  # New Arrivals
+            "best-sellers": "/us/en/man-all-products-l7465.html",  # Best Sellers
         }
     )
 

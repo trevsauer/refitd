@@ -1699,17 +1699,16 @@ HTML_TEMPLATE = """
         let currentCategory = 'all';  // Track selected category
         const useSupabase = {{ 'true' if use_supabase else 'false' }};
 
-        // Category organization structure
+        // Category organization structure - matches Zara's website navigation
         const CATEGORY_STRUCTURE = {
             tops_base: {
                 label: 'Base Layer',
                 icon: '👕',
                 subcategories: {
-                    tshirts: { label: 'T-Shirts', icon: '👕', keywords: ['t-shirt', 'tshirt', 'tee', 't shirt', 'basic'] },
-                    longsleeve: { label: 'Long Sleeve', icon: '👕', keywords: ['long sleeve', 'longsleeve', 'long-sleeve'] },
-                    shirts: { label: 'Shirts', icon: '👔', keywords: ['shirt', 'button', 'oxford', 'poplin', 'linen', 'cotton shirt'] },
-                    polos: { label: 'Polos', icon: '👕', keywords: ['polo'] },
-                    tanks: { label: 'Tanks & Henleys', icon: '🎽', keywords: ['tank', 'henley', 'sleeveless', 'muscle'] }
+                    tshirts: { label: 'T-Shirts', icon: '👕', keywords: ['t-shirt', 'tshirt', 'tee', 't shirt', 'basic', 'tank top'] },
+                    shirts: { label: 'Shirts', icon: '👔', keywords: ['shirt', 'button', 'oxford', 'poplin', 'linen shirt', 'cotton shirt'] },
+                    polos: { label: 'Polo Shirts', icon: '👕', keywords: ['polo'] },
+                    tanks: { label: 'Tank Tops', icon: '🎽', keywords: ['tank', 'sleeveless', 'muscle'] }
                 }
             },
             tops_mid: {
@@ -1717,8 +1716,9 @@ HTML_TEMPLATE = """
                 icon: '🧶',
                 subcategories: {
                     sweaters: { label: 'Sweaters', icon: '🧶', keywords: ['sweater', 'knit', 'pullover', 'jumper', 'knitwear'] },
-                    cardigans: { label: 'Cardigans', icon: '🧶', keywords: ['cardigan', 'open front', 'button-up knit'] },
-                    hoodies: { label: 'Hoodies', icon: '🧥', keywords: ['hoodie', 'hooded', 'hood'] },
+                    cardigans: { label: 'Cardigans', icon: '🧶', keywords: ['cardigan'] },
+                    quarterzip: { label: 'Quarter Zip', icon: '🧶', keywords: ['quarter zip', 'quarter-zip', 'half zip', 'half-zip'] },
+                    hoodies: { label: 'Hoodies', icon: '🧥', keywords: ['hoodie', 'hooded'] },
                     sweatshirts: { label: 'Sweatshirts', icon: '👕', keywords: ['sweatshirt', 'fleece', 'crewneck', 'crew neck', 'french terry'] }
                 }
             },
@@ -1726,60 +1726,238 @@ HTML_TEMPLATE = """
                 label: 'Bottoms',
                 icon: '👖',
                 subcategories: {
-                    pants: { label: 'Pants', icon: '👖', keywords: ['pant', 'trouser', 'chino', 'jean', 'denim', 'jogger', 'cargo', 'slack'] },
-                    shorts: { label: 'Shorts', icon: '🩳', keywords: ['short', 'bermuda', 'swim'] }
+                    pants: { label: 'Pants', icon: '👖', keywords: ['pant', 'trouser', 'chino', 'jogger', 'cargo', 'slack'] },
+                    jeans: { label: 'Jeans', icon: '👖', keywords: ['jean', 'denim'] },
+                    shorts: { label: 'Shorts', icon: '🩳', keywords: ['short', 'bermuda'] },
+                    sweatsuits: { label: 'Sweatsuits', icon: '🏃', keywords: ['sweatsuit', 'tracksuit', 'track pant', 'jogger set'] }
                 }
             },
             outerwear: {
                 label: 'Outerwear',
                 icon: '🧥',
                 subcategories: {
-                    jackets: { label: 'Jackets', icon: '🧥', keywords: ['jacket', 'bomber', 'windbreaker', 'trucker', 'overshirt', 'shacket'] },
-                    coats: { label: 'Coats', icon: '🧥', keywords: ['coat', 'overcoat', 'trench', 'parka', 'puffer', 'quilted', 'padded', 'down'] },
-                    blazers: { label: 'Blazers', icon: '🤵', keywords: ['blazer', 'sport coat', 'suit jacket', 'suit'] },
-                    vests: { label: 'Vests', icon: '🦺', keywords: ['vest', 'gilet', 'waistcoat', 'sleeveless jacket', 'bodywarmer'] }
+                    jackets: { label: 'Jackets', icon: '🧥', keywords: ['jacket', 'bomber', 'windbreaker', 'trucker', 'down jacket'] },
+                    coats: { label: 'Coats', icon: '🧥', keywords: ['coat', 'overcoat', 'trench', 'parka', 'puffer', 'quilted', 'padded'] },
+                    leather: { label: 'Leather', icon: '🧥', keywords: ['leather jacket', 'leather coat', 'leather'] },
+                    blazers: { label: 'Blazers', icon: '🤵', keywords: ['blazer', 'sport coat'] },
+                    suits: { label: 'Suits', icon: '🤵', keywords: ['suit'] },
+                    overshirts: { label: 'Overshirts', icon: '👔', keywords: ['overshirt', 'shacket', 'shirt jacket'] },
+                    vests: { label: 'Vests', icon: '🦺', keywords: ['vest', 'gilet', 'waistcoat', 'bodywarmer'] }
                 }
             },
             shoes: {
-                label: 'Shoes',
+                label: 'Footwear',
                 icon: '👟',
-                subcategories: {}
+                subcategories: {
+                    shoes: { label: 'Shoes', icon: '👟', keywords: ['shoe', 'sneaker', 'loafer', 'derby', 'oxford', 'sandal', 'slipper', 'moccasin', 'espadrille'] },
+                    boots: { label: 'Boots', icon: '🥾', keywords: ['boot', 'chelsea', 'ankle boot', 'combat boot'] }
+                }
             }
         };
 
-        // Classify a product into the organized structure
-        function classifyProduct(product) {
-            const name = (product.name || '').toLowerCase();
-            const subcat = (product.subcategory || '').toLowerCase();
-            const category = (product.category || '').toLowerCase();
-            const searchText = `${name} ${subcat} ${category}`;
+        /**
+         * GARMENT TYPE DETECTION
+         *
+         * This function classifies products based on the PRODUCT NAME only.
+         * The category field in the database is UNRELIABLE and should not be trusted.
+         *
+         * Classification priority (checked in order - first match wins):
+         * 1. Bottoms (pants, shorts, jeans, trousers) - very distinctive names
+         * 2. Shoes/Boots (footwear, sneakers, boots) - very distinctive names
+         * 3. Outerwear (jackets, coats, blazers, leather) - check before tops
+         * 4. Mid layer (sweaters, hoodies, sweatshirts, quarter-zip) - check before base
+         * 5. Base layer (t-shirts, shirts, polos) - most generic, check last
+         */
 
-            // Check each main category and its subcategories
-            for (const [mainCat, config] of Object.entries(CATEGORY_STRUCTURE)) {
-                for (const [subCatKey, subConfig] of Object.entries(config.subcategories)) {
-                    for (const keyword of subConfig.keywords) {
-                        if (searchText.includes(keyword)) {
-                            return { main: mainCat, sub: subCatKey };
-                        }
-                    }
+        // Helper function to check if a word exists as a complete word (not part of another word)
+        function hasWord(text, word) {
+            // Create a regex that matches the word with word boundaries
+            // This prevents "pants" from matching in "participants"
+            // Note: Escaping special regex characters in the word
+            const escaped = word.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+            const regex = new RegExp('\\\\b' + escaped + '(s|es)?\\\\b', 'i');
+            return regex.test(text);
+        }
+
+        // Helper function to check if any of the keywords match
+        function hasAnyWord(text, keywords) {
+            return keywords.some(kw => hasWord(text, kw));
+        }
+
+        function classifyProduct(product) {
+            // ONLY use the product name for classification - it's the most reliable
+            const name = (product.name || '').toLowerCase();
+
+            // ============================================================
+            // STEP 1: Check for BOTTOMS first (pants, shorts, jeans, trousers)
+            // These have very distinctive names that won't conflict with other categories
+            // ============================================================
+
+            // Check for shorts FIRST (before pants, since "shorts" is more specific)
+            if (hasAnyWord(name, ['short', 'bermuda'])) {
+                // Make sure it's not "short sleeve" which is a top
+                if (!hasAnyWord(name, ['sleeve', 'shirt', 'top', 'tee', 't-shirt'])) {
+                    return { main: 'bottoms', sub: 'shorts', displayCategory: 'Shorts' };
                 }
             }
 
-            // Fallback based on category field
-            if (category.includes('shoe') || category.includes('footwear')) {
-                return { main: 'shoes', sub: null };
-            }
-            if (category.includes('bottom') || category.includes('pant') || category.includes('short')) {
-                return { main: 'bottoms', sub: 'pants' };
-            }
-            if (category.includes('outer') || category.includes('jacket') || category.includes('coat')) {
-                return { main: 'outerwear', sub: 'jackets' };
-            }
-            if (category.includes('top') || category.includes('shirt') || category.includes('tee')) {
-                return { main: 'tops_base', sub: 'tshirts' };
+            // Check for jeans (before generic pants)
+            if (hasAnyWord(name, ['jean', 'denim pant', 'denim trouser'])) {
+                return { main: 'bottoms', sub: 'jeans', displayCategory: 'Jeans' };
             }
 
-            return { main: 'other', sub: null };
+            // Check for sweatsuits/tracksuits
+            if (hasAnyWord(name, ['sweatsuit', 'tracksuit', 'track pant', 'jogger set', 'matching set'])) {
+                return { main: 'bottoms', sub: 'sweatsuits', displayCategory: 'Sweatsuits' };
+            }
+
+            // Check for pants/trousers
+            if (hasAnyWord(name, ['pant', 'trouser', 'chino', 'jogger', 'cargo pant', 'dress pant', 'suit pant', 'slack'])) {
+                return { main: 'bottoms', sub: 'pants', displayCategory: 'Pants' };
+            }
+
+            // ============================================================
+            // STEP 2: Check for FOOTWEAR (Shoes & Boots)
+            // ============================================================
+
+            // Check boots first (more specific than shoes)
+            if (hasAnyWord(name, ['boot', 'chelsea', 'combat boot', 'ankle boot', 'hiking boot'])) {
+                return { main: 'shoes', sub: 'boots', displayCategory: 'Boots' };
+            }
+
+            // Check for shoes
+            if (hasAnyWord(name, ['shoe', 'sneaker', 'loafer', 'derby', 'sandal', 'slipper', 'moccasin', 'espadrille', 'trainer'])) {
+                return { main: 'shoes', sub: 'shoes', displayCategory: 'Shoes' };
+            }
+
+            // ============================================================
+            // STEP 3: Check for OUTERWEAR (jackets, coats, blazers, leather, vests)
+            // Check these BEFORE tops because "jacket" might contain other words
+            // ============================================================
+
+            // Leather (check early - very specific)
+            if (hasAnyWord(name, ['leather jacket', 'leather coat', 'leather bomber', 'biker jacket', 'moto jacket'])) {
+                return { main: 'outerwear', sub: 'leather', displayCategory: 'Leather' };
+            }
+
+            // Blazers (specific outerwear)
+            if (hasAnyWord(name, ['blazer', 'sport coat', 'sportcoat'])) {
+                return { main: 'outerwear', sub: 'blazers', displayCategory: 'Blazers' };
+            }
+
+            // Suits (check before generic jacket - "suit jacket" should be suits)
+            if (hasWord(name, 'suit') && !hasAnyWord(name, ['sweatsuit', 'tracksuit'])) {
+                return { main: 'outerwear', sub: 'suits', displayCategory: 'Suits' };
+            }
+
+            // Coats (includes puffers, parkas, trenches)
+            if (hasAnyWord(name, ['coat', 'parka', 'puffer', 'trench', 'overcoat', 'topcoat'])) {
+                return { main: 'outerwear', sub: 'coats', displayCategory: 'Coats' };
+            }
+
+            // Vests/Gilets
+            if (hasAnyWord(name, ['vest', 'gilet', 'waistcoat', 'bodywarmer'])) {
+                return { main: 'outerwear', sub: 'vests', displayCategory: 'Vests' };
+            }
+
+            // Overshirts / Shackets (between shirt and jacket)
+            if (hasAnyWord(name, ['overshirt', 'shacket', 'shirt jacket'])) {
+                return { main: 'outerwear', sub: 'overshirts', displayCategory: 'Overshirts' };
+            }
+
+            // Jackets (general - check after more specific outerwear)
+            if (hasAnyWord(name, ['jacket', 'bomber', 'windbreaker', 'anorak', 'trucker', 'down jacket', 'quilted', 'padded'])) {
+                return { main: 'outerwear', sub: 'jackets', displayCategory: 'Jackets' };
+            }
+
+            // ============================================================
+            // STEP 4: Check for MID LAYER tops (sweaters, hoodies, sweatshirts, quarter-zip)
+            // Check these BEFORE base layer because "sweatshirt" contains "shirt"
+            // ============================================================
+
+            // Quarter-zip (check before sweaters)
+            if (hasAnyWord(name, ['quarter zip', 'quarter-zip', 'half zip', 'half-zip', '1/4 zip'])) {
+                return { main: 'tops_mid', sub: 'quarterzip', displayCategory: 'Quarter Zip' };
+            }
+
+            // Sweatshirts (check BEFORE checking for "shirt")
+            if (hasAnyWord(name, ['sweatshirt', 'crewneck sweat', 'crew neck sweat', 'fleece'])) {
+                return { main: 'tops_mid', sub: 'sweatshirts', displayCategory: 'Sweatshirts' };
+            }
+
+            // Hoodies
+            if (hasAnyWord(name, ['hoodie', 'hooded'])) {
+                return { main: 'tops_mid', sub: 'hoodies', displayCategory: 'Hoodies' };
+            }
+
+            // Cardigans (check before generic sweaters)
+            if (hasWord(name, 'cardigan')) {
+                return { main: 'tops_mid', sub: 'cardigans', displayCategory: 'Cardigans' };
+            }
+
+            // Sweaters/Knits
+            if (hasAnyWord(name, ['sweater', 'knit', 'pullover', 'jumper', 'knitwear'])) {
+                return { main: 'tops_mid', sub: 'sweaters', displayCategory: 'Sweaters' };
+            }
+
+            // ============================================================
+            // STEP 5: Check for BASE LAYER tops (t-shirts, shirts, polos, tanks)
+            // These are the most generic categories - check last
+            // ============================================================
+
+            // T-shirts (check before generic "shirt")
+            if (hasAnyWord(name, ['t-shirt', 'tshirt', 'tee'])) {
+                return { main: 'tops_base', sub: 'tshirts', displayCategory: 'T-Shirts' };
+            }
+
+            // Tank tops
+            if (hasAnyWord(name, ['tank', 'sleeveless top', 'muscle tee'])) {
+                return { main: 'tops_base', sub: 'tanks', displayCategory: 'Tank Tops' };
+            }
+
+            // Polos
+            if (hasWord(name, 'polo')) {
+                return { main: 'tops_base', sub: 'polos', displayCategory: 'Polo Shirts' };
+            }
+
+            // Shirts (most generic - only if nothing else matched)
+            if (hasWord(name, 'shirt')) {
+                return { main: 'tops_base', sub: 'shirts', displayCategory: 'Shirts' };
+            }
+
+            // ============================================================
+            // STEP 6: Fallback - use tags_final if available
+            // ============================================================
+            const tagsFinal = product.tags_final;
+            if (tagsFinal && tagsFinal.category) {
+                const cat = tagsFinal.category.toLowerCase();
+                if (cat === 'bottom') {
+                    return { main: 'bottoms', sub: 'pants', displayCategory: 'Pants' };
+                }
+                if (cat === 'outerwear') {
+                    return { main: 'outerwear', sub: 'jackets', displayCategory: 'Jackets' };
+                }
+                if (cat === 'shoes') {
+                    return { main: 'shoes', sub: 'shoes', displayCategory: 'Shoes' };
+                }
+                if (cat === 'top_mid' || (tagsFinal.top_layer_role === 'mid')) {
+                    return { main: 'tops_mid', sub: 'sweaters', displayCategory: 'Sweaters' };
+                }
+                if (cat === 'top_base' || cat === 'top' || (tagsFinal.top_layer_role === 'base')) {
+                    return { main: 'tops_base', sub: 'tshirts', displayCategory: 'T-Shirts' };
+                }
+            }
+
+            // ============================================================
+            // STEP 7: Last resort - uncategorized
+            // ============================================================
+            return { main: 'other', sub: null, displayCategory: 'Other' };
+        }
+
+        // Get the display category name for a product (used for the badge)
+        function getDisplayCategory(product) {
+            const classification = classifyProduct(product);
+            return classification.displayCategory || 'Other';
         }
 
         // Build category sidebar from products data
@@ -1940,6 +2118,50 @@ HTML_TEMPLATE = """
 
         // Format category name for display
         function formatCategoryName(category) {
+            // Map internal category keys to human-readable names
+            const categoryDisplayNames = {
+                'all': 'All Products',
+                // Base Layer
+                'tops_base': 'Base Layer',
+                'tops_base-tshirts': 'T-Shirts',
+                'tops_base-shirts': 'Shirts',
+                'tops_base-polos': 'Polo Shirts',
+                'tops_base-tanks': 'Tank Tops',
+                // Mid Layer
+                'tops_mid': 'Mid Layer',
+                'tops_mid-sweaters': 'Sweaters',
+                'tops_mid-cardigans': 'Cardigans',
+                'tops_mid-quarterzip': 'Quarter Zip',
+                'tops_mid-hoodies': 'Hoodies',
+                'tops_mid-sweatshirts': 'Sweatshirts',
+                // Bottoms
+                'bottoms': 'Bottoms',
+                'bottoms-pants': 'Pants',
+                'bottoms-jeans': 'Jeans',
+                'bottoms-shorts': 'Shorts',
+                'bottoms-sweatsuits': 'Sweatsuits',
+                // Outerwear
+                'outerwear': 'Outerwear',
+                'outerwear-jackets': 'Jackets',
+                'outerwear-coats': 'Coats',
+                'outerwear-leather': 'Leather',
+                'outerwear-blazers': 'Blazers',
+                'outerwear-suits': 'Suits',
+                'outerwear-overshirts': 'Overshirts',
+                'outerwear-vests': 'Vests',
+                // Footwear
+                'shoes': 'Footwear',
+                'shoes-shoes': 'Shoes',
+                'shoes-boots': 'Boots',
+                // Other
+                'other': 'Other'
+            };
+
+            if (categoryDisplayNames[category]) {
+                return categoryDisplayNames[category];
+            }
+
+            // Fallback: convert snake_case-subcategory to Title Case
             return category
                 .split(/[-_]/)
                 .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -2293,7 +2515,7 @@ HTML_TEMPLATE = """
                 </div>
 
                 <div class="metadata-section">
-                    <span class="category-badge">${product.subcategory || product.category}</span>
+                    <span class="category-badge">${getDisplayCategory(product)}</span>
                     <h2 class="product-name">${product.name}</h2>
                     <p class="product-id">ID: ${product.product_id}</p>
 

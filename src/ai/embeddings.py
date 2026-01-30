@@ -17,15 +17,42 @@ Usage:
 """
 
 import asyncio
-from typing import Optional
+import os
 from dataclasses import dataclass
+from typing import Any, Optional, Union
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-
-from .ollama_client import OllamaClient, OllamaConfig
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+)
 
 console = Console()
+
+# Import clients - prefer OpenAI, fallback to Ollama
+try:
+    from .openai_client import OpenAIClient, OpenAIConfig
+
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
+try:
+    from .ollama_client import OllamaClient, OllamaConfig
+
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+
+# Type alias for either client
+AIClient = (
+    Union["OpenAIClient", "OllamaClient"]
+    if OPENAI_AVAILABLE or OLLAMA_AVAILABLE
+    else Any
+)
 
 
 @dataclass
@@ -33,7 +60,10 @@ class EmbeddingsConfig:
     """Configuration for embeddings service."""
 
     batch_size: int = 10  # Products to process at once
-    embedding_dimension: int = 768  # nomic-embed-text dimension
+    # OpenAI text-embedding-3-small: 1536 dimensions
+    # OpenAI text-embedding-3-large: 3072 dimensions
+    # Ollama nomic-embed-text: 768 dimensions
+    embedding_dimension: int = 1536  # Default for OpenAI text-embedding-3-small
 
 
 class EmbeddingsService:
@@ -46,19 +76,37 @@ class EmbeddingsService:
 
     def __init__(
         self,
-        supabase_client = None,
-        ollama_client: Optional[OllamaClient] = None,
+        supabase_client=None,
+        ai_client: Optional[AIClient] = None,
         config: Optional[EmbeddingsConfig] = None,
+        use_openai: bool = True,
     ):
+        """
+        Initialize the EmbeddingsService.
+
+        Args:
+            supabase_client: Supabase client for product data
+            ai_client: Pre-configured AI client (OpenAI or Ollama)
+            config: Embeddings configuration
+            use_openai: If True, prefer OpenAI; if False, use Ollama
+        """
         self.supabase = supabase_client
-        self.client = ollama_client
+        self.client = ai_client
         self.config = config or EmbeddingsConfig()
-        self._owns_client = ollama_client is None
+        self._owns_client = ai_client is None
+        self._use_openai = use_openai and OPENAI_AVAILABLE
 
     async def __aenter__(self):
         """Async context manager entry."""
         if self._owns_client:
-            self.client = OllamaClient()
+            if self._use_openai and OPENAI_AVAILABLE:
+                self.client = OpenAIClient()
+                console.print("[green]Using OpenAI embeddings[/green]")
+            elif OLLAMA_AVAILABLE:
+                self.client = OllamaClient()
+                console.print("[yellow]Using Ollama embeddings[/yellow]")
+            else:
+                raise RuntimeError("No AI client available. Install openai or ollama.")
             await self.client.connect()
         return self
 
@@ -67,10 +115,15 @@ class EmbeddingsService:
         if self._owns_client and self.client:
             await self.client.close()
 
-    def _get_client(self) -> OllamaClient:
-        """Get the Ollama client."""
+    def _get_client(self) -> AIClient:
+        """Get the AI client (OpenAI or Ollama)."""
         if self.client is None:
-            self.client = OllamaClient()
+            if self._use_openai and OPENAI_AVAILABLE:
+                self.client = OpenAIClient()
+            elif OLLAMA_AVAILABLE:
+                self.client = OllamaClient()
+            else:
+                raise RuntimeError("No AI client available. Install openai or ollama.")
             self._owns_client = True
         return self.client
 
@@ -182,9 +235,11 @@ class EmbeddingsService:
         embeddings = {}
         client = self._get_client()
 
-        # Check Ollama availability
+        # Check AI service availability
         if not await client.is_available():
-            console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+            console.print(
+                "[red]AI service not available. Check your API key or Ollama server.[/red]"
+            )
             return {}
 
         if show_progress:
@@ -241,12 +296,14 @@ class EmbeddingsService:
         for product_id, embedding in embeddings.items():
             try:
                 # Update the product with its embedding
-                self.supabase.table("products").update({
-                    "embedding": embedding
-                }).eq("id", product_id).execute()
+                self.supabase.table("products").update({"embedding": embedding}).eq(
+                    "id", product_id
+                ).execute()
                 stored += 1
             except Exception as e:
-                console.print(f"[red]Error storing embedding for {product_id}: {e}[/red]")
+                console.print(
+                    f"[red]Error storing embedding for {product_id}: {e}[/red]"
+                )
 
         console.print(f"[green]Stored {stored} embeddings in database[/green]")
         return stored
@@ -287,7 +344,7 @@ class EmbeddingsService:
                     "query_embedding": query_embedding,
                     "match_threshold": threshold,
                     "match_count": limit,
-                }
+                },
             ).execute()
 
             return response.data or []
@@ -333,10 +390,12 @@ class EmbeddingsService:
                 similarity = self._cosine_similarity(query_embedding, product_embedding)
 
                 if similarity >= threshold:
-                    results.append({
-                        **product,
-                        "similarity": similarity,
-                    })
+                    results.append(
+                        {
+                            **product,
+                            "similarity": similarity,
+                        }
+                    )
 
         # Sort by similarity and return top results
         results.sort(key=lambda x: x["similarity"], reverse=True)
@@ -378,7 +437,9 @@ class EmbeddingsService:
             raise ValueError("Supabase client required")
 
         # Get the reference product
-        response = self.supabase.table("products").select("*").eq("id", product_id).execute()
+        response = (
+            self.supabase.table("products").select("*").eq("id", product_id).execute()
+        )
 
         if not response.data:
             console.print(f"[red]Product {product_id} not found[/red]")
@@ -402,7 +463,7 @@ class EmbeddingsService:
                     "query_embedding": embedding,
                     "match_threshold": 0.5,
                     "match_count": limit + 1,  # +1 to exclude self
-                }
+                },
             ).execute()
 
             # Filter out the reference product
@@ -469,13 +530,17 @@ $$;
 
 async def test_embeddings():
     """Test the embeddings service."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     console.print("\n[bold cyan]Testing Embeddings Service[/bold cyan]\n")
 
     async with EmbeddingsService() as embeddings:
-        # Check Ollama
+        # Check AI service
         client = embeddings._get_client()
         if not await client.is_available():
-            console.print("[red]Ollama is not running. Start with: ollama serve[/red]")
+            console.print("[red]AI service not available. Check your API key.[/red]")
             return
 
         # Test embedding generation
@@ -497,7 +562,9 @@ async def test_embeddings():
         }
         product_embedding = await embeddings.embed_product(test_product)
 
-        console.print(f"[green]Product embedding dimensions:[/green] {len(product_embedding)}")
+        console.print(
+            f"[green]Product embedding dimensions:[/green] {len(product_embedding)}"
+        )
 
         # Test similarity
         console.print("\n[cyan]Testing similarity calculation...[/cyan]")
@@ -507,7 +574,9 @@ async def test_embeddings():
 
         # Show SQL setup
         console.print("\n[cyan]Supabase setup SQL:[/cyan]")
-        console.print("[dim]Run this in Supabase SQL editor to enable pgvector search:[/dim]")
+        console.print(
+            "[dim]Run this in Supabase SQL editor to enable pgvector search:[/dim]"
+        )
         console.print(f"[yellow]{MATCH_PRODUCTS_SQL[:500]}...[/yellow]")
 
 

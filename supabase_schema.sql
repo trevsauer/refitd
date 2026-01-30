@@ -73,6 +73,10 @@ CREATE INDEX IF NOT EXISTS idx_products_color ON products(color);
 -- First, add a new JSONB column for sizes with availability
 ALTER TABLE products ADD COLUMN IF NOT EXISTS sizes_availability JSONB DEFAULT '[]';
 
+-- Add timestamp for when sizes availability was last checked/updated
+-- This is critical for knowing the freshness of stock data
+ALTER TABLE products ADD COLUMN IF NOT EXISTS sizes_checked_at TIMESTAMPTZ;
+
 -- If you want to migrate existing TEXT[] sizes to JSONB format, run:
 -- UPDATE products SET sizes_availability = (
 --     SELECT jsonb_agg(jsonb_build_object('size', s, 'available', true))
@@ -358,3 +362,82 @@ SELECT
 FROM custom_vocabulary
 GROUP BY category
 ORDER BY category;
+
+-- ============================================
+-- REFITD CANONICAL TAGGING SYSTEM
+-- ============================================
+-- These columns store the structured tags from the ReFitd Item Tagging System.
+-- See: docs/Item Tagging System - RF (1.15.2026).md for full specification.
+--
+-- Architecture:
+--   1. AI Sensor Layer: tags_ai_raw (immutable, contains confidence scores)
+--   2. Policy Layer: Applies thresholds and rules (in Python)
+--   3. Canonical Tags: tags_final (confidence-free, for generator)
+
+-- Add columns for ReFitd canonical tagging system
+ALTER TABLE products ADD COLUMN IF NOT EXISTS tags_ai_raw JSONB;  -- Immutable AI sensor output with confidence
+ALTER TABLE products ADD COLUMN IF NOT EXISTS tags_final JSONB;   -- Canonical tags for generator (no confidence)
+ALTER TABLE products ADD COLUMN IF NOT EXISTS curation_status_refitd TEXT DEFAULT 'pending';  -- 'approved', 'needs_review', 'needs_fix', 'pending'
+ALTER TABLE products ADD COLUMN IF NOT EXISTS tag_policy_version TEXT;  -- Policy version used (e.g., 'tag_policy_v2.0')
+ALTER TABLE products ADD COLUMN IF NOT EXISTS curation_notes_refitd TEXT;  -- Curator comments
+
+-- Indexes for efficient tag queries
+CREATE INDEX IF NOT EXISTS idx_products_curation_status ON products(curation_status_refitd);
+CREATE INDEX IF NOT EXISTS idx_products_tag_policy_version ON products(tag_policy_version);
+
+-- GIN index for JSONB tag queries
+CREATE INDEX IF NOT EXISTS idx_products_tags_final ON products USING GIN (tags_final);
+
+-- ============================================
+-- VIEW: ReFitd Tagging Summary
+-- ============================================
+-- Overview of tagging progress and status
+
+CREATE OR REPLACE VIEW refitd_tagging_summary AS
+SELECT
+    COUNT(*) as total_products,
+    COUNT(tags_final) as tagged_products,
+    COUNT(*) - COUNT(tags_final) as untagged_products,
+    COUNT(*) FILTER (WHERE curation_status_refitd = 'approved') as approved,
+    COUNT(*) FILTER (WHERE curation_status_refitd = 'needs_review') as needs_review,
+    COUNT(*) FILTER (WHERE curation_status_refitd = 'needs_fix') as needs_fix,
+    COUNT(*) FILTER (WHERE curation_status_refitd = 'pending') as pending,
+    ROUND(COUNT(tags_final)::numeric / NULLIF(COUNT(*)::numeric, 0) * 100, 1) as percent_tagged,
+    ROUND(COUNT(*) FILTER (WHERE curation_status_refitd = 'approved')::numeric / NULLIF(COUNT(tags_final)::numeric, 0) * 100, 1) as percent_approved
+FROM products;
+
+-- ============================================
+-- VIEW: Style Identity Distribution
+-- ============================================
+-- Analyze which style identities are most common
+
+CREATE OR REPLACE VIEW refitd_style_distribution AS
+SELECT
+    style_tag as style_identity,
+    COUNT(*) as product_count
+FROM products,
+    jsonb_array_elements_text(tags_final->'style_identity') as style_tag
+WHERE tags_final IS NOT NULL
+GROUP BY style_tag
+ORDER BY product_count DESC;
+
+-- ============================================
+-- VIEW: Formality Distribution
+-- ============================================
+-- Analyze formality levels across products
+
+CREATE OR REPLACE VIEW refitd_formality_distribution AS
+SELECT
+    tags_final->>'formality' as formality,
+    COUNT(*) as product_count
+FROM products
+WHERE tags_final IS NOT NULL AND tags_final->>'formality' IS NOT NULL
+GROUP BY tags_final->>'formality'
+ORDER BY
+    CASE tags_final->>'formality'
+        WHEN 'athletic' THEN 1
+        WHEN 'casual' THEN 2
+        WHEN 'smart-casual' THEN 3
+        WHEN 'business-casual' THEN 4
+        WHEN 'formal' THEN 5
+    END;
