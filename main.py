@@ -407,6 +407,26 @@ Data is saved to Supabase (cloud) by default, with optional local file storage.
         help="Skip AI tagging (only scrape products)",
     )
 
+    sample_group.add_argument(
+        "--tag-existing",
+        action="store_true",
+        help="Run AI tagging on existing products in Supabase (no scraping)",
+    )
+
+    sample_group.add_argument(
+        "--tag-limit",
+        type=int,
+        default=None,
+        metavar="NUM",
+        help="Limit number of products to tag with --tag-existing (default: all)",
+    )
+
+    sample_group.add_argument(
+        "--tag-untagged-only",
+        action="store_true",
+        help="Only tag products that don't have tags_final (use with --tag-existing)",
+    )
+
     return parser.parse_args()
 
 
@@ -462,6 +482,217 @@ async def ai_status():
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         return 1
+
+
+def check_ai_tagging_dependencies() -> tuple[bool, str]:
+    """
+    Pre-flight check for AI tagging dependencies.
+
+    Returns:
+        Tuple of (success: bool, error_message: str)
+    """
+    errors = []
+
+    # Check 1: openai package installed
+    try:
+        import openai
+    except ImportError:
+        errors.append("OpenAI package not installed. Run: pip install openai")
+
+    # Check 2: OPENAI_API_KEY environment variable set
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        errors.append(
+            "OPENAI_API_KEY environment variable not set. Add it to your .env file."
+        )
+    elif len(api_key) < 20:
+        errors.append("OPENAI_API_KEY appears to be invalid (too short).")
+
+    if errors:
+        return False, "\n".join(f"  • {e}" for e in errors)
+
+    return True, ""
+
+
+async def tag_existing_products(
+    limit: int | None = None,
+    untagged_only: bool = False,
+) -> int:
+    """
+    Run AI tagging on existing products in Supabase.
+
+    Args:
+        limit: Maximum number of products to tag (None = all)
+        untagged_only: Only tag products without tags_final
+
+    Returns:
+        Exit code (0 = success, 1 = error)
+    """
+    from src.loaders.supabase_loader import SupabaseLoader
+
+    # ANSI colors
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+    GREEN = "\033[32m"
+    CYAN = "\033[36m"
+    YELLOW = "\033[33m"
+    RED = "\033[31m"
+
+    print()
+    print(f"{BOLD}╔══════════════════════════════════════════════════════╗{RESET}")
+    print(f"{BOLD}║         🏷️  TAG EXISTING PRODUCTS  🏷️               ║{RESET}")
+    print(f"{BOLD}╚══════════════════════════════════════════════════════╝{RESET}")
+
+    # Pre-flight check
+    print(f"\n{DIM}Checking AI tagging dependencies...{RESET}")
+    ok, error_msg = check_ai_tagging_dependencies()
+    if not ok:
+        print(f"\n{RED}✗ AI tagging pre-flight check failed:{RESET}")
+        print(error_msg)
+        print(f"\n{YELLOW}Please fix the above issues and try again.{RESET}")
+        return 1
+    print(f"{GREEN}✓ AI dependencies OK{RESET}")
+
+    # Load products from Supabase
+    print(f"\n{DIM}Loading products from Supabase...{RESET}")
+    loader = SupabaseLoader()
+    supabase_url = os.getenv("SUPABASE_URL")
+    bucket_name = "product-images"
+
+    try:
+        query = loader.client.table("products").select("*")
+
+        if untagged_only:
+            # Filter for products without tags_final or with empty tags_final
+            query = query.or_("tags_final.is.null,tags_final.eq.{}")
+
+        if limit:
+            query = query.limit(limit)
+
+        response = query.execute()
+        products = response.data or []
+
+    except Exception as e:
+        print(f"{RED}✗ Failed to load products: {e}{RESET}")
+        return 1
+
+    if not products:
+        print(f"{YELLOW}No products found to tag.{RESET}")
+        return 0
+
+    print(f"{GREEN}Found {len(products)} products to tag{RESET}")
+
+    # Category mapping
+    category_mapping = {
+        "tshirts": "top_base",
+        "shirts": "top_base",
+        "polo-shirts": "top_base",
+        "sweaters": "top_mid",
+        "hoodies": "top_mid",
+        "quarter-zip": "top_mid",
+        "trousers": "bottom",
+        "jeans": "bottom",
+        "shorts": "bottom",
+        "sweatsuits": "bottom",
+        "jackets": "outerwear",
+        "outerwear": "outerwear",
+        "blazers": "outerwear",
+        "coats": "outerwear",
+        "suits": "outerwear",
+        "overshirts": "outerwear",
+        "leather": "outerwear",
+        "shoes": "shoe",
+        "boots": "shoe",
+        "bags": "accessory",
+        "accessories": "accessory",
+        "colognes": "accessory",
+        "new-in": "top_base",
+        "best-sellers": "top_base",
+    }
+
+    # Tag products
+    tagged_count = 0
+    failed_count = 0
+
+    try:
+        from src.ai import apply_tag_policy, ReFitdTagger
+
+        async with ReFitdTagger() as tagger:
+            for i, product in enumerate(products, 1):
+                product_id = product.get("product_id")
+                name = product.get("name", "Unknown")
+                category = product.get("category", "")
+
+                print(f"\n{CYAN}[{i}/{len(products)}] Tagging: {name[:50]}...{RESET}")
+
+                # Get image URL
+                image_paths = product.get("image_paths", [])
+                if not image_paths or not supabase_url:
+                    print(f"  {YELLOW}No image available, skipping{RESET}")
+                    continue
+
+                image_url = f"{supabase_url}/storage/v1/object/public/{bucket_name}/{image_paths[0]}"
+
+                # Map category
+                refitd_category = category_mapping.get(category, "top_base")
+
+                try:
+                    # Generate tags
+                    ai_output = await tagger.tag_product(
+                        image_url=image_url,
+                        category=refitd_category,
+                        product_name=name,
+                        additional_context={
+                            "color": product.get("color"),
+                            "materials": product.get("materials", []),
+                            "composition": product.get("composition"),
+                        },
+                    )
+
+                    if ai_output:
+                        # Apply policy
+                        policy_result = apply_tag_policy(
+                            ai_output,
+                            product_name=name,
+                            subcategory=category,
+                        )
+
+                        # Update product in database
+                        update_data = {
+                            "tags_ai_raw": ai_output.model_dump(),
+                            "tags_final": policy_result.canonical_tags.model_dump(),
+                        }
+
+                        loader.client.table("products").update(update_data).eq(
+                            "product_id", product_id
+                        ).execute()
+
+                        print(f"  {GREEN}✓ Tagged successfully{RESET}")
+                        tagged_count += 1
+                    else:
+                        print(f"  {YELLOW}No tags generated{RESET}")
+                        failed_count += 1
+
+                except Exception as e:
+                    print(f"  {RED}✗ Error: {str(e)[:60]}{RESET}")
+                    failed_count += 1
+
+    except Exception as e:
+        print(f"\n{RED}Error during tagging: {e}{RESET}")
+        import traceback
+
+        traceback.print_exc()
+        return 1
+
+    # Summary
+    print(f"\n{BOLD}═══════════════════════════════════════{RESET}")
+    print(f"{GREEN}Tagged: {tagged_count}{RESET}")
+    if failed_count:
+        print(f"{YELLOW}Failed: {failed_count}{RESET}")
+    print(f"{BOLD}═══════════════════════════════════════{RESET}")
+
+    return 0 if failed_count == 0 else 1
 
 
 async def ai_generate_tags():
@@ -1002,6 +1233,18 @@ async def sample_and_tag(
     print(f"{BOLD}║         🛍️  SAMPLE & TAG WORKFLOW  🛍️               ║{RESET}")
     print(f"{BOLD}╚══════════════════════════════════════════════════════╝{RESET}")
 
+    # Pre-flight check for AI tagging dependencies (unless skipping tags)
+    if not skip_tags:
+        print(f"\n{DIM}Checking AI tagging dependencies...{RESET}")
+        ok, error_msg = check_ai_tagging_dependencies()
+        if not ok:
+            print(f"\n{RED}✗ AI tagging pre-flight check failed:{RESET}")
+            print(error_msg)
+            print(f"\n{YELLOW}Please fix the above issues and try again.{RESET}")
+            print(f"{YELLOW}Or use --sample-no-tags to skip AI tagging.{RESET}")
+            return 1
+        print(f"{GREEN}✓ AI dependencies OK{RESET}")
+
     # Get available categories from config
     all_categories = list(pipeline_config.scraper.categories.keys())
 
@@ -1378,6 +1621,15 @@ def main():
                 categories=categories,
                 skip_existing=args.sample_skip_existing,
                 skip_tags=args.sample_no_tags,
+            )
+        )
+
+    # Handle --tag-existing flag: tag existing products in Supabase
+    if args.tag_existing:
+        return asyncio.run(
+            tag_existing_products(
+                limit=args.tag_limit,
+                untagged_only=args.tag_untagged_only,
             )
         )
 

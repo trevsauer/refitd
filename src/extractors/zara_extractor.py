@@ -752,7 +752,7 @@ class ZaraExtractor:
                                     else:
                                         img_url += "?w=850"
                                     images.append(img_url)
-                            elif media.get("path") and media.get("name"):
+                                elif media.get("path") and media.get("name"):
                                     # Fallback: Build the image URL from path/name
                                     img_url = f"https://static.zara.net/photos/{media['path']}/{media['name']}.jpg?w=850"
                                     images.append(img_url)
