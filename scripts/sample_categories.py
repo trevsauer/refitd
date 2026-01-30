@@ -262,7 +262,7 @@ class CategorySampler:
                     materials=product.materials,
                     fit=product.fit,
                     composition=product.composition,
-                    image_urls=product.image_urls[:5] if product.image_urls else None,
+                    image_urls=product.image_urls,  # No limit - config handles it
                 )
             else:
                 # Save to local files

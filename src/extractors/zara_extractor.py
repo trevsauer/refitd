@@ -859,9 +859,7 @@ class ZaraExtractor:
                                     elif media.get("path") and media.get("name"):
                                         img_url = f"https://static.zara.net/photos/{media['path']}/{media['name']}.jpg?w=850"
                                         variant["images"].append(img_url)
-                                variant["images"] = variant["images"][
-                                    :5
-                                ]  # Limit to 5 images
+                                # No limit - config.storage.max_images_per_product is applied later
 
                             # Get price and sizes for this color
                             if "sizes" in color_info and color_info["sizes"]:
