@@ -336,28 +336,50 @@ refitd/
 ├── 📄 main.py                 # Scraper entry point
 ├── 📄 viewer.py               # Product viewer with AI features
 ├── 📄 requirements.txt        # Python dependencies
-├── 📄 supabase_schema.sql     # Database schema
+├── 📄 README.md               # This file
 │
-├── 📁 src/
+├── 📁 src/                    # Core application code
+│   ├── 📄 pipeline.py         # ETL pipeline orchestration
 │   ├── 📁 extractors/         # Web scraping logic
-│   ├── 📁 transformers/       # Data cleaning
+│   │   └── zara_extractor.py  # Zara-specific scraper
+│   ├── 📁 transformers/       # Data cleaning & validation
+│   │   └── product_transformer.py
 │   ├── 📁 loaders/            # Database & file storage
-│   ├── 📁 tracking/           # Scraping tracker
+│   │   ├── file_loader.py     # Local file storage
+│   │   └── supabase_loader.py # Cloud database storage
+│   ├── 📁 tracking/           # Scraping state tracker
+│   │   └── tracker.py
 │   └── 📁 ai/                 # AI features
-│       ├── ollama_client.py   # Ollama API client
-│       ├── style_tagger.py    # AI tag generation
+│       ├── refitd_tagger.py   # GPT-4 vision tagging (primary)
+│       ├── tag_policy.py      # Tag validation & business rules
+│       ├── openai_client.py   # OpenAI API client
+│       ├── ollama_client.py   # Ollama API client (legacy)
+│       ├── style_tagger.py    # Legacy style tagging
 │       ├── embeddings.py      # Semantic search
 │       └── chat.py            # AI chat assistant
 │
-├── 📁 config/
-│   └── settings.py            # Configuration
+├── 📁 config/                 # Configuration
+│   └── settings.py            # App settings & constants
 │
-├── 📁 docs/
+├── 📁 tests/                  # Test suite
+│   ├── conftest.py            # pytest configuration
+│   ├── test_viewer_rendering.py  # Viewer & composition tests
+│   ├── test_category_classification.py
+│   └── test_composition.py
+│
+├── 📁 scripts/                # Utility scripts
+│   ├── analyze_categories.py  # Category analysis
+│   ├── analyze_categories_api.py
+│   └── sample_categories.py   # Category sampling
+│
+├── 📁 docs/                   # Documentation
 │   ├── SETUP_GUIDE_FOR_BEGINNERS.md
-│   ├── AI_TAG_GENERATION.md
-│   └── SIZE_EXTRACTION.md
+│   ├── SUPABASE_SETUP.md      # Database setup guide
+│   ├── supabase_schema.sql    # Database schema
+│   ├── AI_TAG_GENERATION.md   # AI tagging docs
+│   └── SIZE_EXTRACTION.md     # Size parsing docs
 │
-└── 📁 data/                   # Local data storage
+└── 📁 data/                   # Local data storage (gitignored)
 ```
 
 ---
@@ -368,7 +390,8 @@ refitd/
 |----------|-------------|
 | [Setup Guide for Beginners](docs/SETUP_GUIDE_FOR_BEGINNERS.md) | Step-by-step setup for complete beginners |
 | [AI Tag Generation](docs/AI_TAG_GENERATION.md) | How AI style tagging works |
-| [Supabase Setup](SUPABASE_SETUP.md) | Database configuration guide |
+| [Supabase Setup](docs/SUPABASE_SETUP.md) | Database configuration guide |
+| [Size Extraction](docs/SIZE_EXTRACTION.md) | How sizes are parsed from product data |
 
 ---
 

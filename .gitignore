@@ -2,6 +2,7 @@
 venv/
 .venv/
 env/
+.direnv/
 
 # Python
 __pycache__/
@@ -24,6 +25,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
 
 # Scraped data (keep structure, ignore actual data)
 data/
@@ -48,3 +50,7 @@ Thumbs.db
 
 # Playwright
 .playwright/
+
+# Local databases
+*.db
+*.sqlite
