@@ -676,7 +676,7 @@ class ReFitdTagger:
     ReFitd Canonical Item Tagger.
 
     Sensor layer that produces structured tags with confidence scores.
-    Uses GPT-4o vision to analyze product images and metadata.
+    Uses GPT-5.2 vision to analyze product images and metadata.
 
     Output follows the ReFitd Item Tagging Specification exactly.
     """
@@ -699,7 +699,7 @@ class ReFitdTagger:
                 )
             self.client = OpenAIClient()
             await self.client.connect()
-            console.print("[green]ReFitd Tagger initialized with GPT-4o[/green]")
+            console.print("[green]ReFitd Tagger initialized with GPT-5.2[/green]")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

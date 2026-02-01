@@ -1,7 +1,7 @@
 """
 Style Tagger - Vision-based style tag generation
 
-Uses a vision model (OpenAI GPT-4o or Ollama) to analyze clothing product images
+Uses a vision model (OpenAI GPT-5.2 or Ollama) to analyze clothing product images
 and generate relevant style tags for categorization and search.
 
 Usage:
@@ -263,7 +263,7 @@ class StyleTagger:
     """
     Vision-based style tag generator for clothing products.
 
-    Uses OpenAI GPT-4o (preferred) or Ollama Moondream to analyze product images
+    Uses OpenAI GPT-5.2 (preferred) or Ollama Moondream to analyze product images
     and generate relevant style tags for categorization and search.
 
     The tagger validates generated tags against a vocabulary that combines:
@@ -303,7 +303,7 @@ class StyleTagger:
         if self._owns_client:
             if self._use_openai and OPENAI_AVAILABLE:
                 self.client = OpenAIClient()
-                console.print("[green]Using OpenAI GPT-4o for style tagging[/green]")
+                console.print("[green]Using OpenAI GPT-5.2 for style tagging[/green]")
             elif OLLAMA_AVAILABLE:
                 self.client = OllamaClient()
                 console.print("[yellow]Using Ollama for style tagging[/yellow]")

@@ -1116,7 +1116,7 @@ async def ai_refitd_tag_product(product_id: str):
         refitd_category = category_mapping.get(original_category, "top_base")
 
         async with ReFitdTagger() as tagger:
-            console.print("[dim]Analyzing image with GPT-4o vision...[/dim]")
+            console.print("[dim]Analyzing image with GPT-5.2 vision...[/dim]")
 
             # Generate AI sensor output
             ai_output = await tagger.tag_product(

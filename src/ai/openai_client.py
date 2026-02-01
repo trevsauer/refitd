@@ -2,7 +2,7 @@
 OpenAI API Client
 
 Provides a simple async wrapper for the OpenAI API.
-Supports text generation, vision models (GPT-4o), and embeddings.
+Supports text generation, vision models (GPT-5.2), and embeddings.
 
 Usage:
     from src.ai import OpenAIClient

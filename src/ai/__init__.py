@@ -9,7 +9,7 @@ Provides AI-powered features using OpenAI (preferred) or Ollama (fallback):
 - Conversational assistant
 
 Configuration:
-- Set OPENAI_API_KEY in .env file to use OpenAI GPT-4o
+- Set OPENAI_API_KEY in .env file to use OpenAI GPT-5.2
 - Or install and run Ollama locally as fallback
 
 OpenAI Setup:

@@ -139,7 +139,7 @@ python viewer.py --supabase
 
 ## 🤖 AI Features
 
-The viewer includes powerful AI capabilities powered by GPT-4o and local models.
+The viewer includes powerful AI capabilities powered by GPT-5.2 and local models.
 
 ### Requirements for AI Features
 
@@ -350,7 +350,7 @@ refitd/
 │   ├── 📁 tracking/           # Scraping state tracker
 │   │   └── tracker.py
 │   └── 📁 ai/                 # AI features
-│       ├── refitd_tagger.py   # GPT-4 vision tagging (primary)
+│       ├── refitd_tagger.py   # GPT-5.2 vision tagging (primary)
 │       ├── tag_policy.py      # Tag validation & business rules
 │       ├── openai_client.py   # OpenAI API client
 │       ├── ollama_client.py   # Ollama API client (legacy)

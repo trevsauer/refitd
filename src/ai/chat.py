@@ -143,7 +143,7 @@ class ChatAssistant:
         if self._owns_client:
             if self._use_openai and OPENAI_AVAILABLE:
                 self.client = OpenAIClient()
-                console.print("[green]Using OpenAI GPT-4o for chat[/green]")
+                console.print("[green]Using OpenAI GPT-5.2 for chat[/green]")
             elif OLLAMA_AVAILABLE:
                 self.client = OllamaClient()
                 console.print("[yellow]Using Ollama for chat[/yellow]")

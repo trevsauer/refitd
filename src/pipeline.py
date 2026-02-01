@@ -325,7 +325,7 @@ class ZaraPipeline:
         """
         AI Tagging phase: Generate ReFitd canonical tags for all scraped products.
 
-        Uses GPT-4o vision to analyze product images and generate structured tags
+        Uses GPT-5.2 vision to analyze product images and generate structured tags
         following the ReFitd Item Tagging Specification.
         """
         import json
