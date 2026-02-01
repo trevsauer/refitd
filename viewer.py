@@ -1786,9 +1786,8 @@ HTML_TEMPLATE = """
                 label: 'Outerwear',
                 icon: '🧥',
                 subcategories: {
-                    jackets: { label: 'Jackets', icon: '🧥', keywords: ['jacket', 'bomber', 'windbreaker', 'trucker', 'down jacket'] },
-                    coats: { label: 'Coats', icon: '🧥', keywords: ['coat', 'overcoat', 'trench', 'parka', 'puffer', 'quilted', 'padded'] },
-                    leather: { label: 'Leather', icon: '🧥', keywords: ['leather jacket', 'leather coat', 'leather'] },
+                    jackets: { label: 'Jackets', icon: '🧥', keywords: ['jacket', 'bomber', 'windbreaker', 'trucker', 'down jacket', 'leather jacket', 'biker jacket', 'moto jacket'] },
+                    coats: { label: 'Coats', icon: '🧥', keywords: ['coat', 'overcoat', 'trench', 'parka', 'puffer', 'quilted', 'padded', 'leather coat'] },
                     blazers: { label: 'Blazers', icon: '🤵', keywords: ['blazer', 'sport coat'] },
                     suits: { label: 'Suits', icon: '🤵', keywords: ['suit'] },
                     overshirts: { label: 'Overshirts', icon: '👔', keywords: ['overshirt', 'shacket', 'shirt jacket'] },
@@ -1881,14 +1880,9 @@ HTML_TEMPLATE = """
             }
 
             // ============================================================
-            // STEP 3: Check for OUTERWEAR (jackets, coats, blazers, leather, vests)
+            // STEP 3: Check for OUTERWEAR (jackets, coats, blazers, vests)
             // Check these BEFORE tops because "jacket" might contain other words
             // ============================================================
-
-            // Leather (check early - very specific)
-            if (hasAnyWord(name, ['leather jacket', 'leather coat', 'leather bomber', 'biker jacket', 'moto jacket'])) {
-                return { main: 'outerwear', sub: 'leather', displayCategory: 'Leather' };
-            }
 
             // Blazers (specific outerwear)
             if (hasAnyWord(name, ['blazer', 'sport coat', 'sportcoat'])) {
@@ -2743,7 +2737,25 @@ HTML_TEMPLATE = """
                                     `).join('')}
                                     ${(product.tags_final.style_identity || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
-                                        <input type="text" placeholder="Add style..." style="padding: 8px 12px; border: 1px dashed #ccc; border-radius: 6px; font-size: 13px; width: 120px;" onkeypress="if(event.key==='Enter'){handleCanonicalTagAdd('style_identity', this.value); this.value='';}" />
+                                        <select style="padding: 8px 12px; border: 1px dashed #ccc; border-radius: 6px; font-size: 13px; background: white;" onchange="if(this.value){handleCanonicalTagAdd('style_identity', this.value); this.value='';}">
+                                            <option value="">Add style...</option>
+                                            <option value="minimal">Minimal</option>
+                                            <option value="classic">Classic</option>
+                                            <option value="preppy">Preppy</option>
+                                            <option value="workwear">Workwear</option>
+                                            <option value="streetwear">Streetwear</option>
+                                            <option value="rugged">Rugged</option>
+                                            <option value="tailoring">Tailoring</option>
+                                            <option value="elevated-basics">Elevated Basics</option>
+                                            <option value="normcore">Normcore</option>
+                                            <option value="sporty">Sporty</option>
+                                            <option value="outdoorsy">Outdoorsy</option>
+                                            <option value="western">Western</option>
+                                            <option value="vintage">Vintage</option>
+                                            <option value="grunge">Grunge</option>
+                                            <option value="punk">Punk</option>
+                                            <option value="utilitarian">Utilitarian</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -2772,6 +2784,27 @@ HTML_TEMPLATE = """
                             </div>
 
                             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                                <!-- Fit (single-value field) - NOT for shoes -->
+                                <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                    <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Fit</div>
+                                    ${product.tags_final.fit ? `
+                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                            ${product.tags_final.fit}
+                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('fit', null)" title="Remove fit" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                        </span>
+                                    ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
+                                    <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
+                                        <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('fit', this.value); this.value='';}">
+                                            <option value="">Set fit...</option>
+                                            <option value="skinny">Skinny</option>
+                                            <option value="slim">Slim</option>
+                                            <option value="regular">Regular</option>
+                                            <option value="relaxed">Relaxed</option>
+                                            <option value="baggy">Baggy</option>
+                                            <option value="oversized">Oversized</option>
+                                        </select>
+                                    </div>
+                                </div>
                                 <!-- Silhouette (single-value field) -->
                                 <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
                                     <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Silhouette</div>
@@ -2780,9 +2813,42 @@ HTML_TEMPLATE = """
                                             ${product.tags_final.silhouette}
                                             <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('silhouette', null)" title="Remove silhouette" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
                                         </span>
-                                    ` : `<span style="color: #ccc; font-size: 12px;">Not set</span>`}
+                                    ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
                                     <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
-                                        <input type="text" placeholder="Set silhouette..." style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; width: 100%;" onkeypress="if(event.key==='Enter'){handleCanonicalTagSet('silhouette', this.value); this.value='';}" />
+                                        <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('silhouette', this.value); this.value='';}">
+                                            <option value="">Set silhouette...</option>
+                                            <optgroup label="Bottoms">
+                                                <option value="straight">Straight</option>
+                                                <option value="tapered">Tapered</option>
+                                                <option value="wide">Wide</option>
+                                            </optgroup>
+                                            <optgroup label="Tops & Outerwear">
+                                                <option value="neutral">Neutral</option>
+                                                <option value="relaxed">Relaxed</option>
+                                                <option value="boxy">Boxy</option>
+                                                <option value="structured">Structured</option>
+                                                <option value="tailored">Tailored</option>
+                                                <option value="longline">Longline</option>
+                                            </optgroup>
+                                        </select>
+                                    </div>
+                                </div>
+                                <!-- Length (single-value field) - NOT for shoes -->
+                                <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
+                                    <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Length</div>
+                                    ${product.tags_final.length ? `
+                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                            ${product.tags_final.length}
+                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('length', null)" title="Remove length" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                        </span>
+                                    ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
+                                    <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
+                                        <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('length', this.value); this.value='';}">
+                                            <option value="">Set length...</option>
+                                            <option value="cropped">Cropped</option>
+                                            <option value="regular">Regular</option>
+                                            <option value="long">Long</option>
+                                        </select>
                                     </div>
                                 </div>
                                 <!-- Pattern (single-value field) -->
@@ -2795,7 +2861,13 @@ HTML_TEMPLATE = """
                                         </span>
                                     ` : `<span style="color: #ccc; font-size: 12px;">Not set</span>`}
                                     <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
-                                        <input type="text" placeholder="Set pattern..." style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; width: 100%;" onkeypress="if(event.key==='Enter'){handleCanonicalTagSet('pattern', this.value); this.value='';}" />
+                                        <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('pattern', this.value); this.value='';}">
+                                            <option value="">Set pattern...</option>
+                                            <option value="solid">Solid</option>
+                                            <option value="stripe">Stripe</option>
+                                            <option value="check">Check</option>
+                                            <option value="textured">Textured</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -2812,7 +2884,14 @@ HTML_TEMPLATE = """
                                     `).join('')}
                                     ${(product.tags_final.context || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
-                                        <input type="text" placeholder="Add context..." style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; width: 110px;" onkeypress="if(event.key==='Enter'){handleCanonicalTagAdd('context', this.value); this.value='';}" />
+                                        <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagAdd('context', this.value); this.value='';}">
+                                            <option value="">Add context...</option>
+                                            <option value="everyday">Everyday</option>
+                                            <option value="work-appropriate">Work Appropriate</option>
+                                            <option value="travel">Travel</option>
+                                            <option value="evening">Evening</option>
+                                            <option value="weekend">Weekend</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -2829,7 +2908,20 @@ HTML_TEMPLATE = """
                                     `).join('')}
                                     ${(product.tags_final.construction_details || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
-                                        <input type="text" placeholder="Add detail..." style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; width: 110px;" onkeypress="if(event.key==='Enter'){handleCanonicalTagAdd('construction_details', this.value); this.value='';}" />
+                                        <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagAdd('construction_details', this.value); this.value='';}">
+                                            <option value="">Add detail...</option>
+                                            <optgroup label="Bottoms">
+                                                <option value="pleated">Pleated</option>
+                                                <option value="flat-front">Flat Front</option>
+                                                <option value="cargo">Cargo</option>
+                                                <option value="drawstring">Drawstring</option>
+                                                <option value="elastic-waist">Elastic Waist</option>
+                                            </optgroup>
+                                            <optgroup label="Tops & Outerwear">
+                                                <option value="structured-shoulder">Structured Shoulder</option>
+                                                <option value="dropped-shoulder">Dropped Shoulder</option>
+                                            </optgroup>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -2846,7 +2938,14 @@ HTML_TEMPLATE = """
                                     `).join('')}
                                     ${(product.tags_final.pairing_tags || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
-                                        <input type="text" placeholder="Add pairing..." style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; width: 110px;" onkeypress="if(event.key==='Enter'){handleCanonicalTagAdd('pairing_tags', this.value); this.value='';}" />
+                                        <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagAdd('pairing_tags', this.value); this.value='';}">
+                                            <option value="">Add pairing...</option>
+                                            <option value="neutral-base">Neutral Base</option>
+                                            <option value="statement-piece">Statement Piece</option>
+                                            <option value="easy-dress-up">Easy Dress Up</option>
+                                            <option value="easy-dress-down">Easy Dress Down</option>
+                                            <option value="high-versatility">High Versatility</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -3379,6 +3478,59 @@ HTML_TEMPLATE = """
         }
 
         // ============================================
+        // TAG REMOVAL FEEDBACK MODAL FUNCTIONS
+        // ============================================
+
+        let tagRemovalModalResolve = null;
+        let tagRemovalModalData = null;
+
+        function showTagRemovalModal(fieldName, value) {
+            return new Promise((resolve) => {
+                tagRemovalModalResolve = resolve;
+                tagRemovalModalData = { fieldName, value };
+
+                // Update modal description
+                const description = document.getElementById('tagRemovalDescription');
+                description.innerHTML = `You're removing <strong style="color: #e74c3c;">"${value}"</strong> from <strong>${fieldName.replace(/_/g, ' ')}</strong>. Please provide feedback to help improve AI tagging.`;
+
+                // Clear previous input
+                document.getElementById('tagRemovalReason').value = '';
+                document.getElementById('tagRemovalCategory').value = 'incorrect_value';
+
+                // Show modal
+                const modal = document.getElementById('tagRemovalFeedbackModal');
+                modal.style.display = 'flex';
+
+                // Focus on textarea
+                setTimeout(() => document.getElementById('tagRemovalReason').focus(), 100);
+            });
+        }
+
+        function closeTagRemovalModal(confirmed) {
+            const modal = document.getElementById('tagRemovalFeedbackModal');
+            modal.style.display = 'none';
+
+            if (tagRemovalModalResolve) {
+                if (confirmed) {
+                    const reason = document.getElementById('tagRemovalReason').value.trim();
+                    const category = document.getElementById('tagRemovalCategory').value;
+                    tagRemovalModalResolve({ confirmed: true, reason, category });
+                } else {
+                    tagRemovalModalResolve({ confirmed: false });
+                }
+                tagRemovalModalResolve = null;
+                tagRemovalModalData = null;
+            }
+        }
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.getElementById('tagRemovalFeedbackModal').style.display === 'flex') {
+                closeTagRemovalModal(false);
+            }
+        });
+
+        // ============================================
         // CANONICAL TAG CURATION FUNCTIONS
         // ============================================
 
@@ -3433,7 +3585,9 @@ HTML_TEMPLATE = """
 
             const product = products[currentIndex];
 
-            if (!confirm(`Remove "${value}" from ${fieldName.replace(/_/g, ' ')}?`)) {
+            // Show feedback modal instead of simple confirm
+            const feedback = await showTagRemovalModal(fieldName, value);
+            if (!feedback.confirmed) {
                 return;
             }
 
@@ -3445,13 +3599,15 @@ HTML_TEMPLATE = """
                         field_name: fieldName,
                         action: 'remove',
                         value: value,
-                        curator: currentCurator
+                        curator: currentCurator,
+                        feedback_reason: feedback.reason,
+                        feedback_category: feedback.category
                     })
                 });
 
                 const result = await response.json();
                 if (result.success) {
-                    console.log(`✓ Removed canonical tag: "${value}" from ${fieldName}`);
+                    console.log(`✓ Removed canonical tag: "${value}" from ${fieldName} (reason: ${feedback.reason || 'none provided'})`);
                     // Update local data
                     if (product.tags_final) {
                         product.tags_final = result.tags_final;
@@ -3477,6 +3633,19 @@ HTML_TEMPLATE = """
 
             const product = products[currentIndex];
 
+            // If removing a tag (value is null), show feedback modal
+            let feedback = { reason: null, category: null };
+            if (value === null) {
+                const currentValue = product.tags_final?.[fieldName];
+                if (currentValue) {
+                    const modalResult = await showTagRemovalModal(fieldName, currentValue);
+                    if (!modalResult.confirmed) {
+                        return;
+                    }
+                    feedback = { reason: modalResult.reason, category: modalResult.category };
+                }
+            }
+
             try {
                 const response = await fetch(`/api/canonical_tags/${product.product_id}/field`, {
                     method: 'PATCH',
@@ -3485,13 +3654,15 @@ HTML_TEMPLATE = """
                         field_name: fieldName,
                         action: 'set',
                         value: value ? value.trim() : null,
-                        curator: currentCurator
+                        curator: currentCurator,
+                        feedback_reason: feedback.reason,
+                        feedback_category: feedback.category
                     })
                 });
 
                 const result = await response.json();
                 if (result.success) {
-                    console.log(`✓ Set canonical tag: ${fieldName} = "${value}"`);
+                    console.log(`✓ Set canonical tag: ${fieldName} = "${value}"${feedback.reason ? ` (reason: ${feedback.reason})` : ''}`);
                     // Update local data
                     if (product.tags_final) {
                         product.tags_final = result.tags_final;
@@ -5320,6 +5491,34 @@ HTML_TEMPLATE = """
             </p>
         </div>
     </div>
+
+    <!-- Tag Removal Feedback Modal -->
+    <div id="tagRemovalFeedbackModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; justify-content: center; align-items: center;">
+        <div style="background: #1a1a1a; border-radius: 12px; padding: 24px; max-width: 480px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.5); border: 1px solid #333;">
+            <h3 style="margin: 0 0 16px 0; color: #fff; font-size: 18px;">🏷️ Tag Removal Feedback</h3>
+            <p id="tagRemovalDescription" style="color: #aaa; margin-bottom: 16px; font-size: 14px;">
+                You're removing a tag. Please provide feedback to help improve AI tagging.
+            </p>
+            <div style="margin-bottom: 16px;">
+                <label style="color: #888; font-size: 12px; display: block; margin-bottom: 6px;">Why is this tag incorrect?</label>
+                <textarea id="tagRemovalReason" placeholder="e.g., 'This is a casual item, not work-appropriate' or 'The fit is actually slim, not regular'" style="width: 100%; height: 80px; padding: 12px; border: 1px solid #444; border-radius: 8px; background: #222; color: #fff; font-size: 14px; resize: vertical; box-sizing: border-box;"></textarea>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="color: #888; font-size: 12px; display: block; margin-bottom: 6px;">Feedback Category</label>
+                <select id="tagRemovalCategory" style="width: 100%; padding: 10px 12px; border: 1px solid #444; border-radius: 8px; background: #222; color: #fff; font-size: 14px;">
+                    <option value="incorrect_value">Incorrect value (wrong tag)</option>
+                    <option value="not_applicable">Not applicable to this item</option>
+                    <option value="ambiguous">Ambiguous/subjective</option>
+                    <option value="missing_context">AI lacked context</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                <button onclick="closeTagRemovalModal(false)" style="padding: 10px 20px; border: 1px solid #444; border-radius: 8px; background: transparent; color: #aaa; cursor: pointer; font-size: 14px;">Cancel</button>
+                <button onclick="closeTagRemovalModal(true)" style="padding: 10px 20px; border: none; border-radius: 8px; background: #e74c3c; color: white; cursor: pointer; font-size: 14px; font-weight: 500;">Remove Tag</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
 """
@@ -5627,6 +5826,10 @@ def patch_canonical_tag_field(product_id):
     This is more granular than full replacement - it modifies one field at a time.
     For array fields (style_identity, context, etc.), you can add/remove items.
     For single-value fields (silhouette, pattern), you replace the value.
+
+    When removing tags, optional feedback can be provided for AI learning:
+    - feedback_reason: Free-text explanation of why the tag was incorrect
+    - feedback_category: Category of the correction (incorrect_value, not_applicable, etc.)
     """
     if not USE_SUPABASE or not supabase_client:
         return jsonify({"error": "Supabase not configured"}), 400
@@ -5636,6 +5839,10 @@ def patch_canonical_tag_field(product_id):
     action = data.get("action")  # "add", "remove", or "set"
     value = data.get("value")  # The tag value to add/remove/set
     curator = data.get("curator")
+
+    # Optional feedback fields for tag removal learning
+    feedback_reason = data.get("feedback_reason")
+    feedback_category = data.get("feedback_category")
 
     if not all([field_name, action, curator]) or value is None:
         return (
@@ -5653,6 +5860,8 @@ def patch_canonical_tag_field(product_id):
         "silhouette",
         "pattern",
         "formality",
+        "fit",
+        "length",
         "shoe_type",
         "profile",
         "closure",
@@ -5673,6 +5882,9 @@ def patch_canonical_tag_field(product_id):
 
         tags_final = result.data[0].get("tags_final") or {}
 
+        # Track the removed value for feedback logging
+        removed_value = None
+
         # Apply the modification
         if field_name in array_fields:
             current_list = tags_final.get(field_name, []) or []
@@ -5680,12 +5892,14 @@ def patch_canonical_tag_field(product_id):
                 if value not in current_list:
                     current_list.append(value)
             elif action == "remove":
+                removed_value = value
                 current_list = [v for v in current_list if v != value]
             elif action == "set":
                 current_list = value if isinstance(value, list) else [value]
             tags_final[field_name] = current_list
         elif field_name in single_fields:
-            if action == "remove" or value == "":
+            if action == "remove" or value == "" or value is None:
+                removed_value = tags_final.get(field_name)
                 tags_final[field_name] = None
             else:
                 tags_final[field_name] = value
@@ -5704,6 +5918,23 @@ def patch_canonical_tag_field(product_id):
             .eq("product_id", product_id)
             .execute()
         )
+
+        # Store feedback for AI learning if provided during tag removal
+        if removed_value and (feedback_reason or feedback_category):
+            try:
+                supabase_client.table("tag_correction_feedback").insert(
+                    {
+                        "product_id": product_id,
+                        "field_name": field_name,
+                        "removed_value": str(removed_value),
+                        "feedback_reason": feedback_reason,
+                        "feedback_category": feedback_category,
+                        "curator": curator,
+                    }
+                ).execute()
+            except Exception as feedback_error:
+                # Log but don't fail the main operation if feedback storage fails
+                print(f"Warning: Failed to store tag correction feedback: {feedback_error}")
 
         return jsonify(
             {"success": True, "tags_final": tags_final, "data": update_result.data}

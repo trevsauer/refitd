@@ -69,14 +69,28 @@ STYLE_IDENTITY_TAGS = frozenset(
     }
 )
 
-# Fit tags (exactly one required)
+# Fit tags (exactly one required, category-aware)
 FIT_TAGS = frozenset(
     {
-        "skinny",  # Bottoms only
+        "skinny",  # Bottoms only (tops & bottoms per spec, but skinny tops are rare)
         "slim",
         "regular",
         "relaxed",
+        "baggy",  # Bottoms only
         "oversized",  # Tops and outerwear only
+    }
+)
+
+# Fit tags by category for validation
+FIT_TAGS_BOTTOM = frozenset({"skinny", "slim", "regular", "relaxed", "baggy"})
+FIT_TAGS_UPPER = frozenset({"skinny", "slim", "regular", "relaxed", "oversized"})
+
+# Length tags (optional 0-1, NOT for shoes)
+LENGTH_TAGS = frozenset(
+    {
+        "cropped",
+        "regular",
+        "long",
     }
 )
 
@@ -91,11 +105,12 @@ SILHOUETTE_BOTTOM_TAGS = frozenset(
 
 SILHOUETTE_UPPER_TAGS = frozenset(
     {
+        "neutral",  # No imposed shape
+        "relaxed",  # Intentionally soft / draped shape
         "boxy",
         "structured",
-        "relaxed",
-        "longline",
         "tailored",
+        "longline",
     }
 )
 
@@ -246,13 +261,14 @@ class AITagOutput(TypedDict, total=False):
     """Sensor layer output with confidence scores.
 
     Note: Color and materials/composition are scraped directly, not AI-generated.
-    Note: Fit is not AI-generated.
-    Formality IS now AI-generated (for comparison with scraped values).
+    Fit, Length, Formality are now AI-generated.
     """
 
     # Apparel fields
     style_identity: list[TagWithConfidence]
+    fit: TagWithConfidence  # Exactly 1, category-aware (not for shoes)
     silhouette: TagWithConfidence
+    length: TagWithConfidence  # Optional 0-1, not for shoes
     formality: TagWithConfidence  # AI-generated formality
     context: list[TagWithConfidence]
     construction_details: list[TagWithConfidence]
@@ -283,7 +299,8 @@ You are not generating opinions, recommendations, outfits, marketing copy, or ex
 You are producing machine-readable tags for a deterministic outfit generation engine.
 
 NOTE: Color and composition/materials are already scraped from the retailer, so you do NOT need to tag those.
-NOTE: Fit is NOT needed - focus on style identity, silhouette, formality, pattern, construction details, and pairing tags.
+NOTE: Fit IS required for apparel (not shoes) - describes volume/ease only.
+NOTE: Length is optional for apparel (not shoes) - describes garment termination/proportion.
 NOTE: Formality IS required - use the formality scale to indicate the dress code appropriateness.
 
 IMPORTANT: If something is uncertain, prefer including the tag with lower confidence rather than omitting it, unless it would be misleading. It's better to provide a tag with 0.5-0.7 confidence than to omit it entirely.
@@ -301,7 +318,9 @@ def build_user_prompt(
 
     # Category-specific vocabulary info
     if category == "shoes":
+        fit_info = "N/A for shoes"
         silhouette_info = "N/A for shoes"
+        length_info = "N/A for shoes"
         details_info = "N/A for shoes"
         shoe_section = f"""
 ### SHOE-SPECIFIC (Required for shoes):
@@ -310,13 +329,31 @@ def build_user_prompt(
 - Closure (0-1): {", ".join(sorted(SHOE_CLOSURE_TAGS))}
 """
     elif category == "bottom":
+        fit_info = ", ".join(sorted(FIT_TAGS_BOTTOM))
         silhouette_info = ", ".join(sorted(SILHOUETTE_BOTTOM_TAGS))
+        length_info = ", ".join(sorted(LENGTH_TAGS))
         details_info = ", ".join(sorted(DETAILS_BOTTOM_TAGS))
         shoe_section = ""
     else:  # top_base, top_mid, outerwear
+        fit_info = ", ".join(sorted(FIT_TAGS_UPPER))
         silhouette_info = ", ".join(sorted(SILHOUETTE_UPPER_TAGS))
+        length_info = ", ".join(sorted(LENGTH_TAGS))
         details_info = ", ".join(sorted(DETAILS_UPPER_TAGS))
         shoe_section = ""
+
+    # Build fit/length section for non-shoes
+    if category != "shoes":
+        fit_length_section = f"""
+### Fit (exactly 1, REQUIRED - describes volume/ease only):
+{fit_info}
+- Fit describes tightness / ease only, NOT leg shape, tapering, or length
+
+### Length (0-1, optional - describes garment termination/proportion):
+{length_info}
+- Length does not replace silhouette or describe fit/volume
+"""
+    else:
+        fit_length_section = ""
 
     prompt = f"""## PRODUCT TO ANALYZE
 
@@ -330,14 +367,18 @@ def build_user_prompt(
 ## ALLOWED TAGS (Use ONLY these)
 
 NOTE: Color and composition/materials are already scraped - DO NOT include them.
-NOTE: Fit is NOT needed - focus on the tags below.
+NOTE: Fit IS required for apparel (not shoes) - describes volume/ease only.
+NOTE: Length is optional for apparel (not shoes) - describes garment termination/proportion.
 NOTE: Formality IS required - use the scale below.
 
 ### Style Identity (1-2 max, REQUIRED):
 {", ".join(sorted(STYLE_IDENTITY_TAGS))}
-
-### Silhouette (exactly 1, REQUIRED for apparel):
+{fit_length_section}
+### Silhouette (exactly 1, REQUIRED for apparel - describes imposed geometry/shape):
 {silhouette_info}
+- Silhouette describes geometry, NOT tightness
+- **neutral** = no imposed shape (tops/outerwear only)
+- **relaxed** = intentionally soft / draped shape (tops/outerwear only)
 
 ### Formality (exactly 1, REQUIRED - indicates dress code appropriateness):
 {", ".join(sorted(FORMALITY_TAGS))}
@@ -381,7 +422,9 @@ Return ONLY valid JSON matching this structure. Omit optional fields if not appl
   "style_identity": [
     {{ "tag": "minimal", "confidence": 0.86 }}
   ],
+  "fit": {{ "tag": "regular", "confidence": 0.82 }},
   "silhouette": {{ "tag": "relaxed", "confidence": 0.78 }},
+  "length": {{ "tag": "regular", "confidence": 0.75 }},
   "formality": {{ "tag": "casual", "confidence": 0.85 }},
   "context": [
     {{ "tag": "everyday", "confidence": 0.82 }}
@@ -401,7 +444,7 @@ For SHOES, also include:
 - "profile": {{ "tag": "sleek", "confidence": 0.77 }}
 - "closure": {{ "tag": "lace-up", "confidence": 0.85 }}
 
-And OMIT: silhouette, construction_details
+And OMIT: fit, silhouette, length, construction_details
 
 ---
 
@@ -409,7 +452,8 @@ And OMIT: silhouette, construction_details
 
 - ❌ Color or color_family tags (already scraped)
 - ❌ Materials or composition tags (already scraped)
-- ❌ Fit tags
+- ❌ Fit tags for shoes
+- ❌ Length tags for shoes
 - ❌ Era / decade tags (70s, 90s, Y2K)
 - ❌ Garment archetypes (bomber, chore jacket, parka)
 - ❌ Trend language or vibes
@@ -496,6 +540,19 @@ def parse_ai_response(response: str, category: str) -> Optional[AITagOutput]:
                     "confidence": _clamp_confidence(item.get("confidence", 0.5)),
                 }
     else:
+        # Apparel: Fit (required for apparel, exactly 1, category-aware)
+        if "fit" in data:
+            item = data["fit"]
+            tag = item.get("tag") if isinstance(item, dict) else None
+
+            # Category-aware validation
+            valid_fits = FIT_TAGS_BOTTOM if category == "bottom" else FIT_TAGS_UPPER
+            if tag in valid_fits:
+                result["fit"] = {
+                    "tag": tag,
+                    "confidence": _clamp_confidence(item.get("confidence", 0.5)),
+                }
+
         # Apparel: Silhouette (required for apparel)
         if "silhouette" in data:
             item = data["silhouette"]
@@ -508,6 +565,17 @@ def parse_ai_response(response: str, category: str) -> Optional[AITagOutput]:
             )
             if tag in valid_silhouettes:
                 result["silhouette"] = {
+                    "tag": tag,
+                    "confidence": _clamp_confidence(item.get("confidence", 0.5)),
+                }
+
+        # Apparel: Length (optional, 0-1)
+        if "length" in data:
+            item = data["length"]
+            tag = item.get("tag") if isinstance(item, dict) else None
+
+            if tag in LENGTH_TAGS:
+                result["length"] = {
                     "tag": tag,
                     "confidence": _clamp_confidence(item.get("confidence", 0.5)),
                 }

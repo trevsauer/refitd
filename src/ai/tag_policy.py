@@ -35,7 +35,10 @@ from .refitd_tagger import (
     CONTEXT_TAGS,
     DETAILS_BOTTOM_TAGS,
     DETAILS_UPPER_TAGS,
+    FIT_TAGS_BOTTOM,
+    FIT_TAGS_UPPER,
     FORMALITY_TAGS,
+    LENGTH_TAGS,
     PAIRING_TAGS,
     PATTERN_TAGS,
     SHOE_CLOSURE_TAGS,
@@ -52,7 +55,7 @@ from .refitd_tagger import (
 # POLICY VERSION
 # =============================================================================
 
-POLICY_VERSION = "tag_policy_v2.3"
+POLICY_VERSION = "tag_policy_v2.4"
 
 
 # =============================================================================
@@ -101,18 +104,25 @@ class PolicyThresholds:
     The generator can use confidence-weighted scoring, and curators can
     review edge cases. It's better to have more data than less.
 
-    Note: Fit, color, and materials are NOT AI-generated.
+    Note: Color and materials are NOT AI-generated.
     Color and composition are scraped directly from retailers.
-    Formality is now AI-generated for comparison with scraped values.
+    Fit, Length, and Formality are AI-generated.
     """
 
     # Style Identity (primary retrieval signal)
     style_identity_auto: float = 0.75
     style_identity_flag: float = 0.50
 
+    # Fit (required for apparel, exactly 1)
+    fit_auto: float = 0.70
+    fit_flag: float = 0.50
+
     # Silhouette (required for apparel)
     silhouette_auto: float = 0.70
     silhouette_allow: float = 0.45
+
+    # Length (optional for apparel, 0-1)
+    length_allow: float = 0.55
 
     # Context (optional)
     context_allow: float = 0.55
@@ -170,12 +180,14 @@ class CanonicalTags:
     """Final canonical tags for the generator (no confidence).
 
     Note: Color and composition/materials are scraped from retailers.
-    Formality is now AI-generated (in addition to scraped value for comparison).
+    Fit, Length, and Formality are AI-generated.
     """
 
     category: str
     style_identity: list[str] = field(default_factory=list)
+    fit: Optional[str] = None  # Required for apparel, not for shoes
     silhouette: Optional[str] = None
+    length: Optional[str] = None  # Optional for apparel, not for shoes
     context: list[str] = field(default_factory=list)
     construction_details: list[str] = field(default_factory=list)
     pattern: Optional[str] = None
@@ -200,8 +212,12 @@ class CanonicalTags:
 
         if self.style_identity:
             result["style_identity"] = self.style_identity
+        if self.fit:
+            result["fit"] = self.fit
         if self.silhouette:
             result["silhouette"] = self.silhouette
+        if self.length:
+            result["length"] = self.length
         if self.context:
             result["context"] = self.context
         if self.construction_details:
@@ -440,7 +456,42 @@ def apply_tag_policy(
         defaults.append(AppliedDefault("formality", "casual", "default_fallback"))
 
     # -------------------------------------------------------------------------
-    # 2. SILHOUETTE (exactly 1, REQUIRED for apparel, category-aware)
+    # 2. FIT (exactly 1, REQUIRED for apparel, category-aware, NOT for shoes)
+    # -------------------------------------------------------------------------
+    if not _is_shoes(category):
+        fit_obj = tags_ai_raw.get("fit")
+        valid_fits = FIT_TAGS_BOTTOM if _is_bottom(category) else FIT_TAGS_UPPER
+
+        if fit_obj is None:
+            reasons.append("missing_fit")
+        else:
+            tag = fit_obj.get("tag")
+            conf = fit_obj.get("confidence", 0)
+
+            if tag not in valid_fits:
+                suppressed.append(
+                    SuppressedTag("fit", tag, conf, "invalid_for_category")
+                )
+                reasons.append("missing_fit")
+            elif conf < thresholds.fit_flag:
+                suppressed.append(
+                    SuppressedTag("fit", tag, conf, "below_flag_threshold")
+                )
+                reasons.append("missing_fit")
+            else:
+                tags_final.fit = tag
+                if conf < thresholds.fit_auto:
+                    reasons.append("fit_low_confidence")
+
+        # Fallback for missing fit (default to regular)
+        if not tags_final.fit:
+            tags_final.fit = "regular"
+            defaults.append(
+                AppliedDefault("fit", "regular", "required_missing_or_suppressed")
+            )
+
+    # -------------------------------------------------------------------------
+    # 3. SILHOUETTE (exactly 1, REQUIRED for apparel, category-aware)
     # -------------------------------------------------------------------------
     if not _is_shoes(category):
         silhouette_obj = tags_ai_raw.get("silhouette")
@@ -471,7 +522,8 @@ def apply_tag_policy(
 
         # Fallback for missing silhouette
         if not tags_final.silhouette:
-            default_sil = "straight" if _is_bottom(category) else "relaxed"
+            # Default: "straight" for bottoms, "neutral" for tops/outerwear
+            default_sil = "straight" if _is_bottom(category) else "neutral"
             tags_final.silhouette = default_sil
             defaults.append(
                 AppliedDefault(
@@ -480,7 +532,26 @@ def apply_tag_policy(
             )
 
     # -------------------------------------------------------------------------
-    # 3. CONTEXT (0-2, optional)
+    # 4. LENGTH (0-1, optional for apparel, NOT for shoes)
+    # -------------------------------------------------------------------------
+    if not _is_shoes(category):
+        length_obj = tags_ai_raw.get("length")
+
+        if length_obj is not None:
+            tag = length_obj.get("tag")
+            conf = length_obj.get("confidence", 0)
+
+            if tag not in LENGTH_TAGS:
+                suppressed.append(SuppressedTag("length", tag, conf, "illegal_tag"))
+            elif conf < thresholds.length_allow:
+                suppressed.append(
+                    SuppressedTag("length", tag, conf, "below_allow_threshold")
+                )
+            else:
+                tags_final.length = tag
+
+    # -------------------------------------------------------------------------
+    # 5. CONTEXT (0-2, optional)
     # -------------------------------------------------------------------------
     context_raw = tags_ai_raw.get("context", [])
     context_selected = []
@@ -505,7 +576,7 @@ def apply_tag_policy(
     tags_final.context = [x["tag"] for x in context_selected]
 
     # -------------------------------------------------------------------------
-    # 4. CONSTRUCTION / DETAILS (0-2, optional, category-aware)
+    # 6. CONSTRUCTION / DETAILS (0-2, optional, category-aware)
     # -------------------------------------------------------------------------
     if not _is_shoes(category):
         details_raw = tags_ai_raw.get("construction_details", [])
@@ -541,7 +612,7 @@ def apply_tag_policy(
         tags_final.construction_details = [x["tag"] for x in details_selected]
 
     # -------------------------------------------------------------------------
-    # 5. PATTERN (0-1, optional)
+    # 7. PATTERN (0-1, optional)
     # -------------------------------------------------------------------------
     pattern_obj = tags_ai_raw.get("pattern")
 
@@ -559,7 +630,7 @@ def apply_tag_policy(
             tags_final.pattern = tag
 
     # -------------------------------------------------------------------------
-    # 6. PAIRING TAGS (0-3, scoring only)
+    # 8. PAIRING TAGS (0-3, scoring only)
     # -------------------------------------------------------------------------
     pairing_raw = tags_ai_raw.get("pairing_tags", [])
     pairing_selected = []
@@ -584,7 +655,7 @@ def apply_tag_policy(
     tags_final.pairing_tags = [x["tag"] for x in pairing_selected]
 
     # -------------------------------------------------------------------------
-    # 7. SHOE-SPECIFIC FIELDS
+    # 9. SHOE-SPECIFIC FIELDS
     # -------------------------------------------------------------------------
     if _is_shoes(category):
         # Shoe Type (required)
@@ -658,7 +729,7 @@ def apply_tag_policy(
                 tags_final.closure = tag
 
     # -------------------------------------------------------------------------
-    # 8. DETERMINE CURATION STATUS
+    # 10. DETERMINE CURATION STATUS
     # -------------------------------------------------------------------------
     status = "approved"
 

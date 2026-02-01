@@ -132,21 +132,9 @@ def classify_product(
         return ClassificationResult("shoes", "shoes", "Shoes")
 
     # =========================================================================
-    # STEP 3: Check for OUTERWEAR (jackets, coats, blazers, leather, vests)
+    # STEP 3: Check for OUTERWEAR (jackets, coats, blazers, vests)
+    # Note: Leather items are classified by their garment type (jacket/coat)
     # =========================================================================
-
-    # Leather (check early - very specific)
-    if has_any_word(
-        name,
-        [
-            "leather jacket",
-            "leather coat",
-            "leather bomber",
-            "biker jacket",
-            "moto jacket",
-        ],
-    ):
-        return ClassificationResult("outerwear", "leather", "Leather")
 
     # Blazers (specific outerwear)
     if has_any_word(name, ["blazer", "sport coat", "sportcoat"]):
@@ -455,19 +443,31 @@ class TestCategoryClassification:
                 result.display_category == "Suits"
             ), f"'{name}' should be Suits, got {result.display_category}"
 
-    def test_leather(self):
-        """Leather jackets should be classified as Leather."""
-        leather_names = [
+    def test_leather_items_classified_by_garment_type(self):
+        """Leather items should be classified by their garment type (jacket/coat), not as a separate category."""
+        # Leather jackets should be classified as Jackets
+        leather_jacket_names = [
             "Leather Jacket",
             "Leather Bomber",
             "Biker Jacket",
             "Moto Jacket",
         ]
-        for name in leather_names:
+        for name in leather_jacket_names:
             result = classify_product(name)
             assert (
-                result.display_category == "Leather"
-            ), f"'{name}' should be Leather, got {result.display_category}"
+                result.display_category == "Jackets"
+            ), f"'{name}' should be Jackets, got {result.display_category}"
+
+        # Leather coats should be classified as Coats
+        leather_coat_names = [
+            "Leather Coat",
+            "Leather Trench Coat",
+        ]
+        for name in leather_coat_names:
+            result = classify_product(name)
+            assert (
+                result.display_category == "Coats"
+            ), f"'{name}' should be Coats, got {result.display_category}"
 
     def test_vests(self):
         """Vests should be classified correctly."""
