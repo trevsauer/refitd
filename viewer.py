@@ -2735,7 +2735,13 @@ HTML_TEMPLATE = """
                                             <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagRemove('style_identity', '${s.replace(/'/g, "\\'")}')" title="Remove ${s}" style="display: none; background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; padding: 0; font-size: 16px; line-height: 1; margin-left: 4px;">×</button>
                                         </span>
                                     `).join('')}
-                                    ${(product.tags_final.style_identity || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
+                                    ${(product.tags_final.deleted_tags?.style_identity || []).map(s => `
+                                        <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #3d1a1a; color: #999; font-weight: 500; padding: 8px 16px; border-radius: 6px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #6d3a3a;">
+                                            ${s}
+                                            <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('style_identity', '${s.replace(/'/g, "\\'")}')" title="Restore ${s}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                        </span>
+                                    `).join('')}
+                                    ${(product.tags_final.style_identity || []).length === 0 && !(product.tags_final.deleted_tags?.style_identity || []).length ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
                                         <select style="padding: 8px 12px; border: 1px dashed #ccc; border-radius: 6px; font-size: 13px; background: white;" onchange="if(this.value){handleCanonicalTagAdd('style_identity', this.value); this.value='';}">
                                             <option value="">Add style...</option>
@@ -2770,6 +2776,12 @@ HTML_TEMPLATE = """
                                             <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('formality', null)" title="Remove formality" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
                                         </span>
                                     ` : `<span style="color: #ccc; font-size: 12px;">Not set</span>`}
+                                    ${product.tags_final.deleted_tags?.formality ? `
+                                        <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
+                                            ${product.tags_final.deleted_tags.formality}
+                                            <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('formality', '${product.tags_final.deleted_tags.formality}')" title="Restore formality" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                        </span>
+                                    ` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagSet('formality', this.value); this.value='';}">
                                             <option value="">Set formality...</option>
@@ -2787,12 +2799,20 @@ HTML_TEMPLATE = """
                                 <!-- Fit (single-value field) - NOT for shoes -->
                                 <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
                                     <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Fit</div>
-                                    ${product.tags_final.fit ? `
-                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
-                                            ${product.tags_final.fit}
-                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('fit', null)" title="Remove fit" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
-                                        </span>
-                                    ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                        ${product.tags_final.fit ? `
+                                            <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                                ${product.tags_final.fit}
+                                                <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('fit', null)" title="Remove fit" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                            </span>
+                                        ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
+                                        ${product.tags_final.deleted_tags?.fit ? `
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
+                                                ${product.tags_final.deleted_tags.fit}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('fit', '${product.tags_final.deleted_tags.fit}')" title="Restore fit" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                            </span>
+                                        ` : ''}
+                                    </div>
                                     <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('fit', this.value); this.value='';}">
                                             <option value="">Set fit...</option>
@@ -2808,12 +2828,20 @@ HTML_TEMPLATE = """
                                 <!-- Silhouette (single-value field) -->
                                 <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
                                     <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Silhouette</div>
-                                    ${product.tags_final.silhouette ? `
-                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
-                                            ${product.tags_final.silhouette}
-                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('silhouette', null)" title="Remove silhouette" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
-                                        </span>
-                                    ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                        ${product.tags_final.silhouette ? `
+                                            <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                                ${product.tags_final.silhouette}
+                                                <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('silhouette', null)" title="Remove silhouette" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                            </span>
+                                        ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
+                                        ${product.tags_final.deleted_tags?.silhouette ? `
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
+                                                ${product.tags_final.deleted_tags.silhouette}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('silhouette', '${product.tags_final.deleted_tags.silhouette}')" title="Restore silhouette" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                            </span>
+                                        ` : ''}
+                                    </div>
                                     <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('silhouette', this.value); this.value='';}">
                                             <option value="">Set silhouette...</option>
@@ -2836,12 +2864,20 @@ HTML_TEMPLATE = """
                                 <!-- Length (single-value field) - NOT for shoes -->
                                 <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
                                     <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Length</div>
-                                    ${product.tags_final.length ? `
-                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
-                                            ${product.tags_final.length}
-                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('length', null)" title="Remove length" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
-                                        </span>
-                                    ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                        ${product.tags_final.length ? `
+                                            <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                                ${product.tags_final.length}
+                                                <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('length', null)" title="Remove length" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                            </span>
+                                        ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
+                                        ${product.tags_final.deleted_tags?.length ? `
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
+                                                ${product.tags_final.deleted_tags.length}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('length', '${product.tags_final.deleted_tags.length}')" title="Restore length" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                            </span>
+                                        ` : ''}
+                                    </div>
                                     <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('length', this.value); this.value='';}">
                                             <option value="">Set length...</option>
@@ -2854,12 +2890,20 @@ HTML_TEMPLATE = """
                                 <!-- Pattern (single-value field) -->
                                 <div style="background: white; padding: 14px 16px; border-radius: 8px; border: 1px solid #eee;">
                                     <div style="font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Pattern</div>
-                                    ${product.tags_final.pattern ? `
-                                        <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
-                                            ${product.tags_final.pattern}
-                                            <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('pattern', null)" title="Remove pattern" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
-                                        </span>
-                                    ` : `<span style="color: #ccc; font-size: 12px;">Not set</span>`}
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                        ${product.tags_final.pattern ? `
+                                            <span style="display: inline-flex; align-items: center; background: #f5f5f5; color: #333; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 8px;">
+                                                ${product.tags_final.pattern}
+                                                <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('pattern', null)" title="Remove pattern" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
+                                            </span>
+                                        ` : `<span style="color: #ccc; font-size: 12px;">Not set</span>`}
+                                        ${product.tags_final.deleted_tags?.pattern ? `
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
+                                                ${product.tags_final.deleted_tags.pattern}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('pattern', '${product.tags_final.deleted_tags.pattern}')" title="Restore pattern" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                            </span>
+                                        ` : ''}
+                                    </div>
                                     <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('pattern', this.value); this.value='';}">
                                             <option value="">Set pattern...</option>
@@ -2882,7 +2926,13 @@ HTML_TEMPLATE = """
                                             <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagRemove('context', '${c.replace(/'/g, "\\'")}')" title="Remove ${c}" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
                                         </span>
                                     `).join('')}
-                                    ${(product.tags_final.context || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
+                                    ${(product.tags_final.deleted_tags?.context || []).map(c => `
+                                        <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
+                                            ${c}
+                                            <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('context', '${c.replace(/'/g, "\\'")}')" title="Restore ${c}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                        </span>
+                                    `).join('')}
+                                    ${(product.tags_final.context || []).length === 0 && !(product.tags_final.deleted_tags?.context || []).length ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagAdd('context', this.value); this.value='';}">
                                             <option value="">Add context...</option>
@@ -3340,12 +3390,15 @@ HTML_TEMPLATE = """
 
             const colorInfo = curatorColors[currentCurator];
 
-            // Show/hide canonical tag delete buttons and add inputs
+            // Show/hide canonical tag delete buttons, add inputs, and restore buttons
             document.querySelectorAll('.canonical-tag-delete-btn').forEach(btn => {
                 btn.style.display = 'inline';
             });
             document.querySelectorAll('.canonical-tag-add-input').forEach(input => {
                 input.style.display = 'inline-block';
+            });
+            document.querySelectorAll('.canonical-tag-restore-btn').forEach(btn => {
+                btn.style.display = 'inline';
             });
 
             // Style Tags input
@@ -5844,11 +5897,23 @@ def patch_canonical_tag_field(product_id):
     feedback_reason = data.get("feedback_reason")
     feedback_category = data.get("feedback_category")
 
-    if not all([field_name, action, curator]) or value is None:
+    if not all([field_name, action, curator]):
         return (
             jsonify(
                 {
-                    "error": "Missing required fields (field_name, action, value, curator)"
+                    "error": "Missing required fields (field_name, action, curator)"
+                }
+            ),
+            400,
+        )
+
+    # Value is required for "add" action only
+    # "set" can have null value (to clear a field), "remove" doesn't need value
+    if action == "add" and value is None:
+        return (
+            jsonify(
+                {
+                    "error": "Missing required field 'value' for add action"
                 }
             ),
             400,
@@ -5885,23 +5950,42 @@ def patch_canonical_tag_field(product_id):
         # Track the removed value for feedback logging
         removed_value = None
 
+        # Initialize deleted_tags tracking if not present
+        if "deleted_tags" not in tags_final:
+            tags_final["deleted_tags"] = {}
+
         # Apply the modification
         if field_name in array_fields:
             current_list = tags_final.get(field_name, []) or []
             if action == "add":
                 if value not in current_list:
                     current_list.append(value)
+                # Remove from deleted_tags if re-adding
+                if field_name in tags_final["deleted_tags"]:
+                    deleted_list = tags_final["deleted_tags"][field_name]
+                    tags_final["deleted_tags"][field_name] = [v for v in deleted_list if v != value]
             elif action == "remove":
                 removed_value = value
                 current_list = [v for v in current_list if v != value]
+                # Track as deleted
+                if field_name not in tags_final["deleted_tags"]:
+                    tags_final["deleted_tags"][field_name] = []
+                if value not in tags_final["deleted_tags"][field_name]:
+                    tags_final["deleted_tags"][field_name].append(value)
             elif action == "set":
                 current_list = value if isinstance(value, list) else [value]
             tags_final[field_name] = current_list
         elif field_name in single_fields:
             if action == "remove" or value == "" or value is None:
                 removed_value = tags_final.get(field_name)
+                # Track as deleted before clearing
+                if removed_value:
+                    tags_final["deleted_tags"][field_name] = removed_value
                 tags_final[field_name] = None
             else:
+                # If setting a new value, remove from deleted_tags
+                if field_name in tags_final["deleted_tags"]:
+                    del tags_final["deleted_tags"][field_name]
                 tags_final[field_name] = value
         else:
             return jsonify({"error": f"Unknown field: {field_name}"}), 400
