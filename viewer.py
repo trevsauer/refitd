@@ -2740,14 +2740,14 @@ HTML_TEMPLATE = """
                                         const tagValue = typeof s === 'string' ? s : s.value;
                                         const reason = typeof s === 'string' ? '' : (s.reason || '');
                                         const curator = typeof s === 'string' ? '' : (s.curator || '');
-                                        const tooltip = reason ? \`Rejected by \${curator}: \${reason}\` : (curator ? \`Rejected by \${curator}\` : 'Rejected');
-                                        return \`
-                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #3d1a1a; color: #999; font-weight: 500; padding: 8px 16px; border-radius: 6px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #6d3a3a; cursor: help;" title="\${tooltip}">
-                                                \${tagValue}
-                                                \${reason ? \`<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none;">(\${reason.substring(0, 30)}\${reason.length > 30 ? '...' : ''})</span>\` : ''}
-                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('style_identity', '\${tagValue.replace(/'/g, "\\\\'")}')" title="Restore \${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                        const tooltip = reason ? `Rejected by ${curator}: ${reason}` : (curator ? `Rejected by ${curator}` : 'Rejected');
+                                        return `
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #3d1a1a; color: #999; font-weight: 500; padding: 8px 16px; border-radius: 6px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #6d3a3a; cursor: help;" title="${tooltip}">
+                                                ${tagValue}
+                                                ${reason ? `<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none;">(${reason.substring(0, 30)}${reason.length > 30 ? '...' : ''})</span>` : ''}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('style_identity', '${tagValue.replace(/'/g, "\\'")}')" title="Restore ${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
                                             </span>
-                                        \`;
+                                        `;
                                     }).join('')}
                                     ${(product.tags_final.style_identity || []).length === 0 && !(product.tags_final.deleted_tags?.style_identity || []).length ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
@@ -2979,14 +2979,14 @@ HTML_TEMPLATE = """
                                         const tagValue = typeof c === 'string' ? c : (c?.value || '');
                                         const reason = typeof c === 'string' ? '' : (c?.reason || '');
                                         const curator = typeof c === 'string' ? '' : (c?.curator || '');
-                                        const tooltip = reason && curator ? \`Rejected by \${curator}: \${reason}\` : (curator ? \`Rejected by \${curator}\` : (reason ? \`Reason: \${reason}\` : 'Rejected'));
-                                        const reasonSnippet = reason ? \`<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(\${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>\` : '';
-                                        return \`
-                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="\${tooltip}">
-                                                \${tagValue}\${reasonSnippet}
-                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('context', '\${tagValue.replace(/'/g, "\\\\'")}')" title="Restore \${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                        const tooltip = reason && curator ? `Rejected by ${curator}: ${reason}` : (curator ? `Rejected by ${curator}` : (reason ? `Reason: ${reason}` : 'Rejected'));
+                                        const reasonSnippet = reason ? `<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>` : '';
+                                        return `
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="${tooltip}">
+                                                ${tagValue}${reasonSnippet}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('context', '${tagValue.replace(/'/g, "\\\\'")}')" title="Restore ${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
                                             </span>
-                                        \`;
+                                        `;
                                     }).join('')}
                                     ${(product.tags_final.context || []).length === 0 && !(product.tags_final.deleted_tags?.context || []).length ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
@@ -3017,14 +3017,14 @@ HTML_TEMPLATE = """
                                         const tagValue = typeof c === 'string' ? c : (c?.value || '');
                                         const reason = typeof c === 'string' ? '' : (c?.reason || '');
                                         const curator = typeof c === 'string' ? '' : (c?.curator || '');
-                                        const tooltip = reason && curator ? \`Rejected by \${curator}: \${reason}\` : (curator ? \`Rejected by \${curator}\` : (reason ? \`Reason: \${reason}\` : 'Rejected'));
-                                        const reasonSnippet = reason ? \`<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(\${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>\` : '';
-                                        return \`
-                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="\${tooltip}">
-                                                \${tagValue}\${reasonSnippet}
-                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('construction_details', '\${tagValue.replace(/'/g, "\\\\'")}')" title="Restore \${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                        const tooltip = reason && curator ? `Rejected by ${curator}: ${reason}` : (curator ? `Rejected by ${curator}` : (reason ? `Reason: ${reason}` : 'Rejected'));
+                                        const reasonSnippet = reason ? `<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>` : '';
+                                        return `
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="${tooltip}">
+                                                ${tagValue}${reasonSnippet}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('construction_details', '${tagValue.replace(/'/g, "\\\\'")}')" title="Restore ${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
                                             </span>
-                                        \`;
+                                        `;
                                     }).join('')}
                                     ${(product.tags_final.construction_details || []).length === 0 && !(product.tags_final.deleted_tags?.construction_details || []).length ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
@@ -3061,14 +3061,14 @@ HTML_TEMPLATE = """
                                         const tagValue = typeof p === 'string' ? p : (p?.value || '');
                                         const reason = typeof p === 'string' ? '' : (p?.reason || '');
                                         const curator = typeof p === 'string' ? '' : (p?.curator || '');
-                                        const tooltip = reason && curator ? \`Rejected by \${curator}: \${reason}\` : (curator ? \`Rejected by \${curator}\` : (reason ? \`Reason: \${reason}\` : 'Rejected'));
-                                        const reasonSnippet = reason ? \`<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(\${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>\` : '';
-                                        return \`
-                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="\${tooltip}">
-                                                \${tagValue}\${reasonSnippet}
-                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('pairing_tags', '\${tagValue.replace(/'/g, "\\\\'")}')" title="Restore \${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                        const tooltip = reason && curator ? `Rejected by ${curator}: ${reason}` : (curator ? `Rejected by ${curator}` : (reason ? `Reason: ${reason}` : 'Rejected'));
+                                        const reasonSnippet = reason ? `<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>` : '';
+                                        return `
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="${tooltip}">
+                                                ${tagValue}${reasonSnippet}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('pairing_tags', '${tagValue.replace(/'/g, "\\\\'")}')" title="Restore ${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
                                             </span>
-                                        \`;
+                                        `;
                                     }).join('')}
                                     ${(product.tags_final.pairing_tags || []).length === 0 && !(product.tags_final.deleted_tags?.pairing_tags || []).length ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
