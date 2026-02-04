@@ -373,6 +373,33 @@ NOTE: Formality IS required - use the scale below.
 
 ### Style Identity (1-2 max, REQUIRED):
 {", ".join(sorted(STYLE_IDENTITY_TAGS))}
+
+**STYLE IDENTITY RULES (follow these precisely):**
+
+| Tag | Use When | Do NOT Use When |
+|-----|----------|-----------------|
+| **minimal** | reduction is the primary design goal; visual noise intentionally removed; form, proportion, or surface is the focus | heritage references present; texture/material richness is focal; item is meant to be noticed. Clean ≠ minimal |
+| **classic** | design is timeless and era-agnostic; proportions conservative and balanced; appropriate across decades | trend exaggeration or novelty drives design. Default when nothing else dominates |
+| **tailoring** | garment belongs to tailored wardrobe context; refinement, structure, or formality is central; pairs with trousers/jackets/suits | casual function outweighs refinement |
+| **preppy** | ivy-inspired, socially conservative casual; polished, respectable, campus-rooted; restraint and propriety are aesthetic | expressive/playful/disruptive details appear; cleanliness alone is only signal |
+| **workwear** | heritage labor garments influence design; durability/construction visually referenced; function implied but not overtly technical | design is luxury-driven or purely aesthetic |
+| **utilitarian** | function-first design visibly expressed; utility signaled through construction; modularity/hardware/technical logic present | function is hidden; pockets decorative or symmetrical; material is luxury-focused |
+| **rugged** | toughness/durability visually emphasized; distressed surfaces or outdoor signaling; built for hard use | finish is clean or refined; item is primarily fashion-styled |
+| **streetwear** | youth/subcultural expression drives design; graphics, logos, or attitude central; meant to signal identity | design is restrained, heritage-driven, or conservative |
+| **elevated-basics** | foundational items refined through fabric or cut; meant to disappear into outfits; simplicity intentional, not expressive | piece functions as focal point; novelty or detailing draws attention |
+| **normcore** | deliberate anonymity is goal; avoids signaling or expression; uniformity and blending intentional | graphics, patches, or personality present |
+| **vintage** | design intentionally references a past era; retro proportions/details/styling central; nostalgia part of appeal | piece is simply classic or timeless |
+| **western** | western heritage elements present; cowboy lineage or frontier references visible; even when executed cleanly/modernly | western influence is purely incidental |
+| **sporty** | athletic function or training lineage visible; performance cues influence design | athletic inspiration is purely stylistic |
+| **outdoorsy** | nature/outdoor activity is clear reference; hiking, trail, or utility-outdoor cues appear | technical features are subtle or hidden |
+| **grunge** | deliberate messiness or anti-polish central; distressed, raw, or chaotic aesthetics dominate | item is simply casual or worn-in |
+| **punk** | rebellion or confrontation is explicit; aggressive detailing or subcultural signaling | edginess is mild or purely aesthetic |
+
+**Key Distinction:**
+- **workwear** = heritage labor reference (e.g., chore coat, Carhartt-style)
+- **utilitarian** = modern function-first design (e.g., tech vest, cargo modularity)
+
+**Default Rule:** If multiple identities seem plausible but none dominant, use **classic** or a single identity only.
 {fit_length_section}
 ### Silhouette (exactly 1, REQUIRED for apparel - describes imposed geometry/shape):
 {silhouette_info}

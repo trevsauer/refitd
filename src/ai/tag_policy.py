@@ -55,7 +55,192 @@ from .refitd_tagger import (
 # POLICY VERSION
 # =============================================================================
 
-POLICY_VERSION = "tag_policy_v2.4"
+POLICY_VERSION = "tag_policy_v2.5"
+
+
+# =============================================================================
+# STYLE IDENTITY RULES (Canonical)
+# =============================================================================
+# These rules define clear, non-overfit guardrails for assigning Style Identity tags.
+# Style Identity reflects DESIGN INTENT, not cleanliness, material weight, or isolated details.
+
+STYLE_IDENTITY_RULES = {
+    "minimal": {
+        "use_when": [
+            "reduction is the primary design goal",
+            "visual noise is intentionally removed",
+            "form, proportion, or surface is the focus",
+        ],
+        "do_not_use_when": [
+            "heritage references are present",
+            "texture or material richness is a focal point",
+            "the item is meant to be noticed",
+        ],
+        "note": "Clean ≠ minimal",
+    },
+    "classic": {
+        "use_when": [
+            "design is timeless and era-agnostic",
+            "proportions are conservative and balanced",
+            "the item would feel appropriate across decades",
+        ],
+        "do_not_use_when": [
+            "trend exaggeration or novelty drives the design",
+        ],
+        "note": "Default choice when nothing else clearly dominates",
+    },
+    "tailoring": {
+        "use_when": [
+            "garment belongs to a tailored wardrobe context",
+            "refinement, structure, or formality is central",
+            "item pairs naturally with trousers, jackets, or suits",
+        ],
+        "do_not_use_when": [
+            "casual function outweighs refinement",
+        ],
+    },
+    "preppy": {
+        "use_when": [
+            "ivy-inspired, socially conservative casual style",
+            "polished, respectable, campus-rooted dressing",
+            "restraint and propriety are the aesthetic",
+        ],
+        "do_not_use_when": [
+            "expressive, playful, or disruptive details appear",
+            "cleanliness alone is the only signal",
+        ],
+    },
+    "workwear": {
+        "use_when": [
+            "heritage labor garments influence the design",
+            "durability and construction are visually referenced",
+            "function is implied, but not overtly technical",
+        ],
+        "do_not_use_when": [
+            "design is luxury-driven or purely aesthetic",
+        ],
+        "note": "Heritage labor reference (e.g., chore coat, Carhartt-style)",
+    },
+    "utilitarian": {
+        "use_when": [
+            "function-first design is visibly expressed",
+            "utility is clearly signaled through construction",
+            "modularity, hardware, or technical logic is present",
+        ],
+        "do_not_use_when": [
+            "function is hidden",
+            "pockets are decorative or symmetrical",
+            "material is luxury-focused",
+        ],
+        "note": "Modern function-first design (e.g., tech vest, cargo modularity)",
+    },
+    "rugged": {
+        "use_when": [
+            "toughness or durability is visually emphasized",
+            "distressed surfaces or outdoor signaling appear",
+            "the garment looks built for hard use",
+        ],
+        "do_not_use_when": [
+            "finish is clean or refined",
+            "the item is primarily fashion-styled",
+        ],
+    },
+    "streetwear": {
+        "use_when": [
+            "youth or subcultural expression drives the design",
+            "graphics, logos, or attitude are central",
+            "the item is meant to signal identity",
+        ],
+        "do_not_use_when": [
+            "design is restrained, heritage-driven, or conservative",
+        ],
+    },
+    "elevated-basics": {
+        "use_when": [
+            "foundational items are refined through fabric or cut",
+            "the garment is meant to disappear into outfits",
+            "simplicity is intentional, not expressive",
+        ],
+        "do_not_use_when": [
+            "the piece functions as a focal point",
+            "novelty or detailing draws attention",
+        ],
+    },
+    "normcore": {
+        "use_when": [
+            "deliberate anonymity is the goal",
+            "the garment avoids signaling or expression",
+            "uniformity and blending in are intentional",
+        ],
+        "do_not_use_when": [
+            "graphics, patches, or personality are present",
+        ],
+    },
+    "vintage": {
+        "use_when": [
+            "design intentionally references a past era",
+            "retro proportions, details, or styling are central",
+            "nostalgia is part of the appeal",
+        ],
+        "do_not_use_when": [
+            "the piece is simply classic or timeless",
+        ],
+    },
+    "western": {
+        "use_when": [
+            "western heritage elements are present",
+            "cowboy lineage or frontier references are visible",
+            "even when executed cleanly or modernly",
+        ],
+        "do_not_use_when": [
+            "western influence is purely incidental",
+        ],
+    },
+    "sporty": {
+        "use_when": [
+            "athletic function or training lineage is visible",
+            "performance cues influence the design",
+        ],
+        "do_not_use_when": [
+            "athletic inspiration is purely stylistic",
+        ],
+    },
+    "outdoorsy": {
+        "use_when": [
+            "nature or outdoor activity is a clear reference",
+            "hiking, trail, or utility-outdoor cues appear",
+        ],
+        "do_not_use_when": [
+            "technical features are subtle or hidden",
+        ],
+    },
+    "grunge": {
+        "use_when": [
+            "deliberate messiness or anti-polish is central",
+            "distressed, raw, or chaotic aesthetics dominate",
+        ],
+        "do_not_use_when": [
+            "the item is simply casual or worn-in",
+        ],
+    },
+    "punk": {
+        "use_when": [
+            "rebellion or confrontation is explicit",
+            "aggressive detailing or subcultural signaling exists",
+        ],
+        "do_not_use_when": [
+            "edginess is mild or purely aesthetic",
+        ],
+    },
+}
+
+# Key distinction for utilitarian vs workwear:
+# - workwear = heritage labor reference
+# - utilitarian = modern function-first design
+
+# Final default rule:
+# If multiple identities seem plausible but none are dominant,
+# use "classic" or a single identity only.
 
 
 # =============================================================================

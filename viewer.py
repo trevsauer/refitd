@@ -2735,12 +2735,20 @@ HTML_TEMPLATE = """
                                             <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagRemove('style_identity', '${s.replace(/'/g, "\\'")}')" title="Remove ${s}" style="display: none; background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; padding: 0; font-size: 16px; line-height: 1; margin-left: 4px;">×</button>
                                         </span>
                                     `).join('')}
-                                    ${(product.tags_final.deleted_tags?.style_identity || []).map(s => `
-                                        <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #3d1a1a; color: #999; font-weight: 500; padding: 8px 16px; border-radius: 6px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #6d3a3a;">
-                                            ${s}
-                                            <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('style_identity', '${s.replace(/'/g, "\\'")}')" title="Restore ${s}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
-                                        </span>
-                                    `).join('')}
+                                    ${(product.tags_final.deleted_tags?.style_identity || []).map(s => {
+                                        // Handle both old format (string) and new format (object)
+                                        const tagValue = typeof s === 'string' ? s : s.value;
+                                        const reason = typeof s === 'string' ? '' : (s.reason || '');
+                                        const curator = typeof s === 'string' ? '' : (s.curator || '');
+                                        const tooltip = reason ? \`Rejected by \${curator}: \${reason}\` : (curator ? \`Rejected by \${curator}\` : 'Rejected');
+                                        return \`
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #3d1a1a; color: #999; font-weight: 500; padding: 8px 16px; border-radius: 6px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #6d3a3a; cursor: help;" title="\${tooltip}">
+                                                \${tagValue}
+                                                \${reason ? \`<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none;">(\${reason.substring(0, 30)}\${reason.length > 30 ? '...' : ''})</span>\` : ''}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('style_identity', '\${tagValue.replace(/'/g, "\\\\'")}')" title="Restore \${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                            </span>
+                                        \`;
+                                    }).join('')}
                                     ${(product.tags_final.style_identity || []).length === 0 && !(product.tags_final.deleted_tags?.style_identity || []).length ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
                                         <select style="padding: 8px 12px; border: 1px dashed #ccc; border-radius: 6px; font-size: 13px; background: white;" onchange="if(this.value){handleCanonicalTagAdd('style_identity', this.value); this.value='';}">
@@ -2776,12 +2784,20 @@ HTML_TEMPLATE = """
                                             <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('formality', null)" title="Remove formality" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
                                         </span>
                                     ` : `<span style="color: #ccc; font-size: 12px;">Not set</span>`}
-                                    ${product.tags_final.deleted_tags?.formality ? `
-                                        <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
-                                            ${product.tags_final.deleted_tags.formality}
-                                            <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('formality', '${product.tags_final.deleted_tags.formality}')" title="Restore formality" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
-                                        </span>
-                                    ` : ''}
+                                    ${product.tags_final.deleted_tags?.formality ? (() => {
+                                        const dt = product.tags_final.deleted_tags.formality;
+                                        const tagValue = typeof dt === 'string' ? dt : (dt?.value || '');
+                                        const reason = typeof dt === 'string' ? '' : (dt?.reason || '');
+                                        const curator = typeof dt === 'string' ? '' : (dt?.curator || '');
+                                        const tooltip = reason && curator ? `Rejected by ${curator}: ${reason}` : (curator ? `Rejected by ${curator}` : (reason ? `Reason: ${reason}` : 'Rejected'));
+                                        const reasonSnippet = reason ? `<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>` : '';
+                                        return `
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="${tooltip}">
+                                                ${tagValue}${reasonSnippet}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('formality', '${tagValue}')" title="Restore formality" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                            </span>
+                                        `;
+                                    })() : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagSet('formality', this.value); this.value='';}">
                                             <option value="">Set formality...</option>
@@ -2806,12 +2822,20 @@ HTML_TEMPLATE = """
                                                 <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('fit', null)" title="Remove fit" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
                                             </span>
                                         ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
-                                        ${product.tags_final.deleted_tags?.fit ? `
-                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
-                                                ${product.tags_final.deleted_tags.fit}
-                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('fit', '${product.tags_final.deleted_tags.fit}')" title="Restore fit" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
-                                            </span>
-                                        ` : ''}
+                                        ${product.tags_final.deleted_tags?.fit ? (() => {
+                                            const dt = product.tags_final.deleted_tags.fit;
+                                            const tagValue = typeof dt === 'string' ? dt : (dt?.value || '');
+                                            const reason = typeof dt === 'string' ? '' : (dt?.reason || '');
+                                            const curator = typeof dt === 'string' ? '' : (dt?.curator || '');
+                                            const tooltip = reason && curator ? `Rejected by ${curator}: ${reason}` : (curator ? `Rejected by ${curator}` : (reason ? `Reason: ${reason}` : 'Rejected'));
+                                            const reasonSnippet = reason ? `<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>` : '';
+                                            return `
+                                                <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="${tooltip}">
+                                                    ${tagValue}${reasonSnippet}
+                                                    <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('fit', '${tagValue}')" title="Restore fit" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                                </span>
+                                            `;
+                                        })() : ''}
                                     </div>
                                     <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('fit', this.value); this.value='';}">
@@ -2835,12 +2859,20 @@ HTML_TEMPLATE = """
                                                 <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('silhouette', null)" title="Remove silhouette" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
                                             </span>
                                         ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
-                                        ${product.tags_final.deleted_tags?.silhouette ? `
-                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
-                                                ${product.tags_final.deleted_tags.silhouette}
-                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('silhouette', '${product.tags_final.deleted_tags.silhouette}')" title="Restore silhouette" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
-                                            </span>
-                                        ` : ''}
+                                        ${product.tags_final.deleted_tags?.silhouette ? (() => {
+                                            const dt = product.tags_final.deleted_tags.silhouette;
+                                            const tagValue = typeof dt === 'string' ? dt : (dt?.value || '');
+                                            const reason = typeof dt === 'string' ? '' : (dt?.reason || '');
+                                            const curator = typeof dt === 'string' ? '' : (dt?.curator || '');
+                                            const tooltip = reason && curator ? `Rejected by ${curator}: ${reason}` : (curator ? `Rejected by ${curator}` : (reason ? `Reason: ${reason}` : 'Rejected'));
+                                            const reasonSnippet = reason ? `<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>` : '';
+                                            return `
+                                                <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="${tooltip}">
+                                                    ${tagValue}${reasonSnippet}
+                                                    <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('silhouette', '${tagValue}')" title="Restore silhouette" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                                </span>
+                                            `;
+                                        })() : ''}
                                     </div>
                                     <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('silhouette', this.value); this.value='';}">
@@ -2871,12 +2903,20 @@ HTML_TEMPLATE = """
                                                 <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('length', null)" title="Remove length" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
                                             </span>
                                         ` : `<span style="color: #ccc; font-size: 12px;">${product.tags_final.shoe_type ? 'N/A' : 'Not set'}</span>`}
-                                        ${product.tags_final.deleted_tags?.length ? `
-                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
-                                                ${product.tags_final.deleted_tags.length}
-                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('length', '${product.tags_final.deleted_tags.length}')" title="Restore length" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
-                                            </span>
-                                        ` : ''}
+                                        ${product.tags_final.deleted_tags?.length ? (() => {
+                                            const dt = product.tags_final.deleted_tags.length;
+                                            const tagValue = typeof dt === 'string' ? dt : (dt?.value || '');
+                                            const reason = typeof dt === 'string' ? '' : (dt?.reason || '');
+                                            const curator = typeof dt === 'string' ? '' : (dt?.curator || '');
+                                            const tooltip = reason && curator ? `Rejected by ${curator}: ${reason}` : (curator ? `Rejected by ${curator}` : (reason ? `Reason: ${reason}` : 'Rejected'));
+                                            const reasonSnippet = reason ? `<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>` : '';
+                                            return `
+                                                <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="${tooltip}">
+                                                    ${tagValue}${reasonSnippet}
+                                                    <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('length', '${tagValue}')" title="Restore length" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                                </span>
+                                            `;
+                                        })() : ''}
                                     </div>
                                     <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('length', this.value); this.value='';}">
@@ -2897,12 +2937,20 @@ HTML_TEMPLATE = """
                                                 <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagSet('pattern', null)" title="Remove pattern" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
                                             </span>
                                         ` : `<span style="color: #ccc; font-size: 12px;">Not set</span>`}
-                                        ${product.tags_final.deleted_tags?.pattern ? `
-                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
-                                                ${product.tags_final.deleted_tags.pattern}
-                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('pattern', '${product.tags_final.deleted_tags.pattern}')" title="Restore pattern" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
-                                            </span>
-                                        ` : ''}
+                                        ${product.tags_final.deleted_tags?.pattern ? (() => {
+                                            const dt = product.tags_final.deleted_tags.pattern;
+                                            const tagValue = typeof dt === 'string' ? dt : (dt?.value || '');
+                                            const reason = typeof dt === 'string' ? '' : (dt?.reason || '');
+                                            const curator = typeof dt === 'string' ? '' : (dt?.curator || '');
+                                            const tooltip = reason && curator ? `Rejected by ${curator}: ${reason}` : (curator ? `Rejected by ${curator}` : (reason ? `Reason: ${reason}` : 'Rejected'));
+                                            const reasonSnippet = reason ? `<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>` : '';
+                                            return `
+                                                <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="${tooltip}">
+                                                    ${tagValue}${reasonSnippet}
+                                                    <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagSet('pattern', '${tagValue}')" title="Restore pattern" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                                </span>
+                                            `;
+                                        })() : ''}
                                     </div>
                                     <div class="canonical-tag-add-input" style="display: none; margin-top: 8px;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white; width: 100%;" onchange="if(this.value){handleCanonicalTagSet('pattern', this.value); this.value='';}">
@@ -2926,12 +2974,20 @@ HTML_TEMPLATE = """
                                             <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagRemove('context', '${c.replace(/'/g, "\\'")}')" title="Remove ${c}" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
                                         </span>
                                     `).join('')}
-                                    ${(product.tags_final.deleted_tags?.context || []).map(c => `
-                                        <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc;">
-                                            ${c}
-                                            <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('context', '${c.replace(/'/g, "\\'")}')" title="Restore ${c}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
-                                        </span>
-                                    `).join('')}
+                                    ${(product.tags_final.deleted_tags?.context || []).map(c => {
+                                        // Handle both old format (string) and new format (object)
+                                        const tagValue = typeof c === 'string' ? c : (c?.value || '');
+                                        const reason = typeof c === 'string' ? '' : (c?.reason || '');
+                                        const curator = typeof c === 'string' ? '' : (c?.curator || '');
+                                        const tooltip = reason && curator ? \`Rejected by \${curator}: \${reason}\` : (curator ? \`Rejected by \${curator}\` : (reason ? \`Reason: \${reason}\` : 'Rejected'));
+                                        const reasonSnippet = reason ? \`<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(\${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>\` : '';
+                                        return \`
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="\${tooltip}">
+                                                \${tagValue}\${reasonSnippet}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('context', '\${tagValue.replace(/'/g, "\\\\'")}')" title="Restore \${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                            </span>
+                                        \`;
+                                    }).join('')}
                                     ${(product.tags_final.context || []).length === 0 && !(product.tags_final.deleted_tags?.context || []).length ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagAdd('context', this.value); this.value='';}">
@@ -2956,7 +3012,21 @@ HTML_TEMPLATE = """
                                             <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagRemove('construction_details', '${d.replace(/'/g, "\\'")}')" title="Remove ${d}" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
                                         </span>
                                     `).join('')}
-                                    ${(product.tags_final.construction_details || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
+                                    ${(product.tags_final.deleted_tags?.construction_details || []).map(c => {
+                                        // Handle both old format (string) and new format (object)
+                                        const tagValue = typeof c === 'string' ? c : (c?.value || '');
+                                        const reason = typeof c === 'string' ? '' : (c?.reason || '');
+                                        const curator = typeof c === 'string' ? '' : (c?.curator || '');
+                                        const tooltip = reason && curator ? \`Rejected by \${curator}: \${reason}\` : (curator ? \`Rejected by \${curator}\` : (reason ? \`Reason: \${reason}\` : 'Rejected'));
+                                        const reasonSnippet = reason ? \`<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(\${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>\` : '';
+                                        return \`
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="\${tooltip}">
+                                                \${tagValue}\${reasonSnippet}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('construction_details', '\${tagValue.replace(/'/g, "\\\\'")}')" title="Restore \${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                            </span>
+                                        \`;
+                                    }).join('')}
+                                    ${(product.tags_final.construction_details || []).length === 0 && !(product.tags_final.deleted_tags?.construction_details || []).length ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagAdd('construction_details', this.value); this.value='';}">
                                             <option value="">Add detail...</option>
@@ -2986,7 +3056,21 @@ HTML_TEMPLATE = """
                                             <button class="canonical-tag-delete-btn" onclick="handleCanonicalTagRemove('pairing_tags', '${p.replace(/'/g, "\\'")}')" title="Remove ${p}" style="display: none; background: none; border: none; color: #999; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">×</button>
                                         </span>
                                     `).join('')}
-                                    ${(product.tags_final.pairing_tags || []).length === 0 ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
+                                    ${(product.tags_final.deleted_tags?.pairing_tags || []).map(p => {
+                                        // Handle both old format (string) and new format (object)
+                                        const tagValue = typeof p === 'string' ? p : (p?.value || '');
+                                        const reason = typeof p === 'string' ? '' : (p?.reason || '');
+                                        const curator = typeof p === 'string' ? '' : (p?.curator || '');
+                                        const tooltip = reason && curator ? \`Rejected by \${curator}: \${reason}\` : (curator ? \`Rejected by \${curator}\` : (reason ? \`Reason: \${reason}\` : 'Rejected'));
+                                        const reasonSnippet = reason ? \`<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(\${reason.length > 30 ? reason.substring(0, 30) + '...' : reason})</span>\` : '';
+                                        return \`
+                                            <span class="deleted-tag-display" style="display: inline-flex; align-items: center; background: #fee; color: #999; padding: 6px 12px; border-radius: 4px; font-size: 13px; gap: 8px; text-decoration: line-through; border: 1px dashed #fcc; cursor: help;" title="\${tooltip}">
+                                                \${tagValue}\${reasonSnippet}
+                                                <button class="canonical-tag-restore-btn" onclick="handleCanonicalTagAdd('pairing_tags', '\${tagValue.replace(/'/g, "\\\\'")}')" title="Restore \${tagValue}" style="display: none; background: none; border: none; color: #4caf50; cursor: pointer; padding: 0; font-size: 12px; line-height: 1;">↩</button>
+                                            </span>
+                                        \`;
+                                    }).join('')}
+                                    ${(product.tags_final.pairing_tags || []).length === 0 && !(product.tags_final.deleted_tags?.pairing_tags || []).length ? `<span style="color: #ccc; font-size: 12px;">None</span>` : ''}
                                     <div class="canonical-tag-add-input" style="display: none;">
                                         <select style="padding: 6px 10px; border: 1px dashed #ccc; border-radius: 4px; font-size: 12px; background: white;" onchange="if(this.value){handleCanonicalTagAdd('pairing_tags', this.value); this.value='';}">
                                             <option value="">Add pairing...</option>
@@ -3165,6 +3249,10 @@ HTML_TEMPLATE = """
             const newIndex = currentIndex + direction;
             if (newIndex >= 0 && newIndex < products.length) {
                 displayProduct(newIndex);
+                // Preserve curate mode state when navigating
+                if (curateMode && currentCurator) {
+                    showCurateInputs();
+                }
             }
         }
 
@@ -3174,6 +3262,10 @@ HTML_TEMPLATE = """
 
             if (variantIndex !== -1) {
                 displayProduct(variantIndex);
+                // Preserve curate mode state when navigating
+                if (curateMode && currentCurator) {
+                    showCurateInputs();
+                }
                 // Scroll to top of product card for better UX
                 document.getElementById('productCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
             } else {
@@ -3249,6 +3341,43 @@ HTML_TEMPLATE = """
             if (e.key === 'ArrowLeft') navigate(-1);
             if (e.key === 'ArrowRight') navigate(1);
         });
+
+        // ============================================
+        // DELETED TAG HELPERS
+        // ============================================
+
+        // Helper to get value from deleted tag (handles both old string format and new object format)
+        function getDeletedTagValue(deletedTag) {
+            return typeof deletedTag === 'string' ? deletedTag : (deletedTag?.value || '');
+        }
+
+        // Helper to get rejection reason from deleted tag
+        function getDeletedTagReason(deletedTag) {
+            return typeof deletedTag === 'string' ? '' : (deletedTag?.reason || '');
+        }
+
+        // Helper to get curator from deleted tag
+        function getDeletedTagCurator(deletedTag) {
+            return typeof deletedTag === 'string' ? '' : (deletedTag?.curator || '');
+        }
+
+        // Helper to build tooltip for deleted tag
+        function getDeletedTagTooltip(deletedTag) {
+            const reason = getDeletedTagReason(deletedTag);
+            const curator = getDeletedTagCurator(deletedTag);
+            if (reason && curator) return `Rejected by ${curator}: ${reason}`;
+            if (curator) return `Rejected by ${curator}`;
+            if (reason) return `Reason: ${reason}`;
+            return 'Rejected';
+        }
+
+        // Helper to render rejection reason snippet (for inline display)
+        function renderRejectionReason(deletedTag) {
+            const reason = getDeletedTagReason(deletedTag);
+            if (!reason) return '';
+            const truncated = reason.length > 30 ? reason.substring(0, 30) + '...' : reason;
+            return `<span style="font-size: 10px; color: #e57373; font-style: italic; text-decoration: none; margin-left: 4px;">(${truncated})</span>`;
+        }
 
         // ============================================
         // CURATE MODE FUNCTIONALITY
@@ -5899,11 +6028,7 @@ def patch_canonical_tag_field(product_id):
 
     if not all([field_name, action, curator]):
         return (
-            jsonify(
-                {
-                    "error": "Missing required fields (field_name, action, curator)"
-                }
-            ),
+            jsonify({"error": "Missing required fields (field_name, action, curator)"}),
             400,
         )
 
@@ -5911,11 +6036,7 @@ def patch_canonical_tag_field(product_id):
     # "set" can have null value (to clear a field), "remove" doesn't need value
     if action == "add" and value is None:
         return (
-            jsonify(
-                {
-                    "error": "Missing required field 'value' for add action"
-                }
-            ),
+            jsonify({"error": "Missing required field 'value' for add action"}),
             400,
         )
 
@@ -5963,24 +6084,49 @@ def patch_canonical_tag_field(product_id):
                 # Remove from deleted_tags if re-adding
                 if field_name in tags_final["deleted_tags"]:
                     deleted_list = tags_final["deleted_tags"][field_name]
-                    tags_final["deleted_tags"][field_name] = [v for v in deleted_list if v != value]
+                    # Handle both old format (list of strings) and new format (list of dicts)
+                    tags_final["deleted_tags"][field_name] = [
+                        v
+                        for v in deleted_list
+                        if (isinstance(v, dict) and v.get("value") != value)
+                        or (isinstance(v, str) and v != value)
+                    ]
             elif action == "remove":
                 removed_value = value
                 current_list = [v for v in current_list if v != value]
-                # Track as deleted
+                # Track as deleted with rejection context
                 if field_name not in tags_final["deleted_tags"]:
                     tags_final["deleted_tags"][field_name] = []
-                if value not in tags_final["deleted_tags"][field_name]:
-                    tags_final["deleted_tags"][field_name].append(value)
+                # Store as object with value and rejection reason
+                deletion_entry = {
+                    "value": value,
+                    "reason": feedback_reason,
+                    "category": feedback_category,
+                    "curator": curator,
+                }
+                # Check if already exists (by value)
+                existing = [
+                    v
+                    for v in tags_final["deleted_tags"][field_name]
+                    if (isinstance(v, dict) and v.get("value") == value)
+                    or (isinstance(v, str) and v == value)
+                ]
+                if not existing:
+                    tags_final["deleted_tags"][field_name].append(deletion_entry)
             elif action == "set":
                 current_list = value if isinstance(value, list) else [value]
             tags_final[field_name] = current_list
         elif field_name in single_fields:
             if action == "remove" or value == "" or value is None:
                 removed_value = tags_final.get(field_name)
-                # Track as deleted before clearing
+                # Track as deleted with rejection context
                 if removed_value:
-                    tags_final["deleted_tags"][field_name] = removed_value
+                    tags_final["deleted_tags"][field_name] = {
+                        "value": removed_value,
+                        "reason": feedback_reason,
+                        "category": feedback_category,
+                        "curator": curator,
+                    }
                 tags_final[field_name] = None
             else:
                 # If setting a new value, remove from deleted_tags
@@ -6018,7 +6164,9 @@ def patch_canonical_tag_field(product_id):
                 ).execute()
             except Exception as feedback_error:
                 # Log but don't fail the main operation if feedback storage fails
-                print(f"Warning: Failed to store tag correction feedback: {feedback_error}")
+                print(
+                    f"Warning: Failed to store tag correction feedback: {feedback_error}"
+                )
 
         return jsonify(
             {"success": True, "tags_final": tags_final, "data": update_result.data}
